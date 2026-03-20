@@ -205,3 +205,17 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# YOLOv8 training outputs
+runs/
+
+# Model weights — too large for git (use GitHub Releases instead)
+*.pt
+*.engine
+
+# Dataset files — not part of the code
+*.yaml
+!requirements*.txt
+
+# Windows batch files with local paths (optional — remove if you want to share them)
+*.bat
