@@ -1,6 +1,6 @@
 # YOLOv8 Toolkit
 
-A clean, practical YOLOv8 training and detection toolkit that **automatically configures itself** based on your GPU, RAM, and dataset size — no manual tuning needed.
+A clean, practical YOLOv8 toolkit for building datasets, training detectors, and running inference — **automatically configures itself** based on your GPU, RAM, and dataset size — no manual tuning needed.
 
 Built for real-world use: handles Windows paths, crash recovery, and scales from a laptop GPU to a workstation.
 
@@ -10,24 +10,127 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 
 | Script | What it does |
 |---|---|
-| `train_detector.py` | Train a YOLOv8 detector on any labeled dataset |
+| `vlm_yolo_prep.py` | Build a labelled YOLOv8 dataset from raw photos using a local VLM — no manual annotation needed |
+| `train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
 | `detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
+
+---
+
+## Full Pipeline
+
+```
+[Raw photos]
+     |
+     v
+vlm_yolo_prep.py        ← auto-label with a local VLM
+     |
+     v
+Labelled dataset
+(train / val + data.yaml)
+     |
+     v
+train_detector.py       ← train YOLOv8
+     |
+     v
+detect_images.py        ← run inference
+```
 
 ---
 
 ## Requirements
 
 ```bash
-pip install ultralytics opencv-python psutil
+pip install ultralytics opencv-python psutil requests pillow pyyaml
 ```
 
 - Python 3.8+
 - PyTorch with CUDA (for GPU training) — install from [pytorch.org](https://pytorch.org/get-started/locally/)
+- [LM Studio](https://lmstudio.ai/) with a vision model loaded (for dataset preparation)
 - Dataset in YOLOv8 format (e.g. exported from [Roboflow](https://roboflow.com))
 
 ---
 
-## Training
+## Step 1 — Build a Dataset (`vlm_yolo_prep.py`)
+
+Sends each photo to a Vision-Language Model running locally in LM Studio, gets bounding box coordinates back, and writes a complete YOLOv8 dataset with no manual labelling.
+
+### Basic usage
+```bash
+python vlm_yolo_prep.py \
+    --input  C:/data/raw_photos \
+    --output C:/data/dataset \
+    --objects screw "hex bolt" "countersunk screw"
+```
+
+Classes are auto-assigned in the order you list them: `screw=0`, `hex bolt=1`, `countersunk screw=2`.
+
+Annotated preview images are saved to `<output>/preview/` by default so you can visually verify detection quality before training.
+
+### Windows batch file
+```bat
+python vlm_yolo_prep.py ^
+    --input  "C:\data\raw_photos" ^
+    --output "C:\data\dataset"    ^
+    --objects Screw               ^
+    --model   qwen2.5-vl-7b-instruct ^
+    --confidence 0.9              ^
+    --downsample 2
+```
+
+### LM Studio setup
+1. Download and open [LM Studio](https://lmstudio.ai/)
+2. Download one of these models:
+   - **Best quality:** `Qwen2.5-VL-72B-Instruct-GGUF` Q4_K_M — needs 16 GB VRAM + 128 GB RAM, set context to **32k**
+   - **Faster:** `Qwen2.5-VL-7B-Instruct-GGUF` Q8_0 — needs 8 GB VRAM, set context to **16k**
+3. Load the model and start the local server (default port 1234)
+
+### All arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--input` | required | Folder of raw images |
+| `--output` | required | Output folder (created if absent, auto-versioned if not empty) |
+| `--objects` | required | Object names to detect. Spaces allowed: `"hex bolt"` `"red car"` |
+| `--classes` | auto | Override class IDs: `screw:0 bolt:0 "hex bolt":1`. Auto-assigned by default |
+| `--model` | `qwen2.5-vl-72b-instruct` | Model name as shown in LM Studio |
+| `--url` | `http://localhost:1234/...` | LM Studio API endpoint |
+| `--timeout` | `180` | API timeout in seconds (use 60 for the 7B model) |
+| `--retries` | `2` | Retry attempts per image on API failure |
+| `--confidence` | `0.0` | Min detection confidence — `0.0` keeps all, `0.9` keeps only high-confidence |
+| `--downsample` | `1.0` | Divide image dimensions by this factor before sending to VLM |
+| `--train` | `0.70` | Train split ratio |
+| `--val` | `0.20` | Val split ratio (gets remainder when `--enable-test` is off) |
+| `--seed` | `42` | Random seed for reproducible splits |
+| `--enable-test` | off | Create a test split in addition to train and val |
+| `--no-preview` | off | Disable annotated preview image export |
+
+### Output structure
+
+```
+dataset/
+├── train/
+│   ├── images/
+│   └── labels/
+├── val/
+│   ├── images/
+│   └── labels/
+├── preview/          ← annotated images for visual QA (one per input photo)
+└── data.yaml
+```
+
+Generated `data.yaml`:
+```yaml
+train: ../train/images
+val: ../valid/images
+nc: 1
+names: ['screw']
+```
+
+> **Note:** VLM-generated labels are a strong starting point but not perfect. Review the `preview/` folder and correct any bad detections in [Roboflow](https://roboflow.com) or [LabelImg](https://github.com/HumanSignal/labelImg) before final training.
+
+---
+
+## Step 2 — Train (`train_detector.py`)
 
 ### Basic usage
 ```bash
@@ -54,6 +157,7 @@ python train_detector.py --resume
 ```
 
 ### All arguments
+
 | Argument | Default | Description |
 |---|---|---|
 | `--input` | required | Path to `data.yaml` file |
@@ -67,58 +171,45 @@ python train_detector.py --resume
 | `--patience` | `50` | Early stopping patience |
 | `--device` | `0` | `0` for GPU, `cpu` for CPU |
 
----
-
-## Auto-Configuration
+### Auto-configuration
 
 The script detects your hardware and dataset size, then selects the best model, image size, and batch size automatically.
 
-### Model + image size selection
-
 | Train images | VRAM | Model | imgsz | Reason |
 |---|---|---|---|---|
-| < 1,000 | ≥ 16GB | yolov8m | 1280 | Small dataset — m avoids overfit, 1280 fits |
+| < 1,000 | ≥ 16GB | yolov8m | 1280 | Small dataset — m avoids overfit |
 | 1,000–5,000 | ≥ 16GB | yolov8l | 1024 | l+1280 forces batch 4 — too noisy |
-| > 5,000 | ≥ 16GB | yolov8x | 1280 | Large dataset justifies x, 1280 fits at batch 8 |
+| > 5,000 | ≥ 16GB | yolov8x | 1280 | Large dataset justifies x |
 | < 1,000 | ≥ 12GB | yolov8m | 1024 | Small dataset, safe imgsz |
 | 1,000–5,000 | ≥ 12GB | yolov8l | 1024 | VRAM limit, keep imgsz safe |
 | > 5,000 | ≥ 12GB | yolov8l | 1024 | l is safe ceiling at 12GB |
 | < 1,000 | ≥ 8GB | yolov8m | 640 | Low VRAM, keep it safe |
 | 1,000–5,000 | ≥ 8GB | yolov8m | 1024 | m is safe at 8GB + 1024 |
-| > 5,000 | ≥ 8GB | yolov8l | 1024 | Dataset justifies l at safe imgsz |
+| > 5,000 | ≥ 8GB | yolov8l | 1024 | Dataset justifies l |
 | any | < 8GB | yolov8m | 640 | Low VRAM, minimal safe config |
 | any | CPU | yolov8m | 640 | CPU fallback |
 
-**Key constraint:** imgsz is only raised when batch size stays ≥ 8. Batch < 8 causes noisy gradients — `1024px + batch 8` beats `1280px + batch 4`.
+**Key constraint:** imgsz is only raised when batch size stays ≥ 8. `1024px + batch 8` beats `1280px + batch 4`.
 
-### Batch size selection
-
-Calculated from VRAM × 85% safety margin ÷ VRAM-per-image estimate, clamped to powers of 2 (4, 8, 16, 32, 64).
-
-### Worker count selection
-
-Calculated from CPU cores and RAM, capped at 8 for Windows stability.
+Batch size is calculated from VRAM × 85% safety margin ÷ VRAM-per-image estimate, clamped to powers of 2 (4, 8, 16, 32, 64). Worker count is calculated from CPU cores and RAM, capped at 8 for Windows stability.
 
 You can always override any single value while letting the rest auto-calculate:
 ```bash
-# Force x model, let batch and imgsz auto-calculate
 python train_detector.py --input data.yaml --name run1 --model yolov8x.pt
 ```
 
----
-
-## Output
+### Output
 
 Training results are saved to `runs/detect/<name>/`:
 
 ```
 runs/detect/my_detector_v1/
 ├── weights/
-│   ├── best.pt      <- best model weights (use this)
-│   └── last.pt      <- last epoch checkpoint (used for resume)
-├── results.png      <- loss and mAP curves
+│   ├── best.pt      ← best model weights (use this)
+│   └── last.pt      ← last epoch checkpoint (used for resume)
+├── results.png
 ├── confusion_matrix.png
-└── args.yaml        <- full training config
+└── args.yaml
 ```
 
 After training, the script automatically runs validation and reports:
@@ -132,12 +223,14 @@ After training, the script automatically runs validation and reports:
 
 ---
 
-## Detection
+## Step 3 — Detect (`detect_images.py`)
 
 Run a trained model over a folder of images:
 
 ```bash
-python detect_images.py --images /path/to/images --model runs/detect/my_detector_v1/weights/best.pt
+python detect_images.py \
+    --images /path/to/images \
+    --model  runs/detect/my_detector_v1/weights/best.pt
 ```
 
 ### With custom confidence threshold
@@ -146,6 +239,7 @@ python detect_images.py --images /path/to/images --model best.pt --conf 0.5
 ```
 
 ### All arguments
+
 | Argument | Default | Description |
 |---|---|---|
 | `--images` | required | Path to folder of input images |
@@ -154,33 +248,33 @@ python detect_images.py --images /path/to/images --model best.pt --conf 0.5
 
 Annotated images are saved to `<images_dir>/detections/` — originals are never modified.
 
-Supported image formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
+Supported formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
 
 ---
 
 ## Dataset Format
 
-This toolkit expects datasets in **YOLOv8 format** with a `data.yaml` file:
+All scripts expect datasets in **YOLOv8 format** with a `data.yaml` file:
 
 ```yaml
 train: ../train/images
 val:   ../valid/images
-test:  ../test/images
 
 nc: 1
 names: ['my_object']
 ```
 
-[Roboflow](https://roboflow.com) exports directly in this format — recommended for labeling and dataset management.
+`vlm_yolo_prep.py` generates this file automatically. [Roboflow](https://roboflow.com) also exports directly in this format and is recommended for manual labelling and dataset management.
 
 ---
 
 ## Tips
 
-- **mAP@0.50 < 0.80 after training?** Add more labeled images. Dataset size is the biggest factor in accuracy.
-- **OOM crash?** Add `--batch 8` or `--batch 4` to override the auto-calculated batch size.
-- **PC crashed mid-training?** Just run with `--resume` — picks up from the last saved epoch automatically.
-- **Specific screw/fastener types not detected?** Collect photos from your actual target structure and fine-tune on those.
+- **Poor detections from the VLM?** Lower `--confidence` to `0.5` and review the `preview/` folder. The VLM may need a more descriptive object name.
+- **mAP@0.50 < 0.80 after training?** Add more labelled images — dataset size is the biggest factor in accuracy.
+- **OOM crash during training?** Add `--batch 8` or `--batch 4` to override the auto-calculated batch size.
+- **PC crashed mid-training?** Run with `--resume` — picks up from the last saved epoch automatically.
+- **Specific variants not detected?** (e.g. rusted bolts, painted-over screws) Collect photos of those specific types and add them to the dataset.
 
 ---
 

@@ -1,3 +1,9 @@
+# YOLOv8 training and inference
 ultralytics
 opencv-python
 psutil
+
+# VLM dataset preparation (vlm_yolo_prep.py)
+requests
+pillow
+pyyaml

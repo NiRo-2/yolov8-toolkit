@@ -65,6 +65,14 @@ def parse_args():
         "--conf", type=float, default=0.25,
         help="Minimum confidence threshold 0.0-1.0 (default: 0.25)"
     )
+    parser.add_argument(
+        "--only-detections", action="store_true", default=True,
+        help="Only save images that have at least one detection (default: True)"
+    )
+    parser.add_argument(
+        "--save-all", action="store_true", default=False,
+        help="Save all images including those with no detections"
+    )
 
     return parser.parse_args()
 
@@ -171,11 +179,18 @@ def run(args):
         # Draw detections
         annotated = draw_detections(image.copy(), results, class_names)
 
-        # Save annotated image
-        out_path = output_dir / img_path.name
-        cv2.imwrite(str(out_path), annotated)
-
-        print(f"  [{i}/{len(image_paths)}] {img_path.name}  →  {n_det} detection(s)")
+        # Save logic -- skip empty images unless --save-all
+        if n_det > 0:
+            out_path = output_dir / img_path.name
+            cv2.imwrite(str(out_path), annotated)
+            print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  {n_det} detection(s)  [saved]")
+        else:
+            if args.save_all:
+                out_path = output_dir / img_path.name
+                cv2.imwrite(str(out_path), annotated)
+                print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  0 detections  [saved]")
+            else:
+                print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  0 detections  [skipped]")
 
     # Summary
     print(f"\n{'='*60}")
