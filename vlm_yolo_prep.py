@@ -1021,7 +1021,7 @@ def write_data_yaml(
     # Use relative paths so the dataset folder is portable (matches Roboflow style)
     lines = []
     lines.append(f"train: ../train/images")
-    lines.append(f"val: ../valid/images")
+    lines.append(f"val: ../val/images")
     if include_test:
         lines.append(f"test: ../test/images")
     lines.append(f"nc: {len(class_names)}")
