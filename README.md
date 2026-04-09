@@ -11,6 +11,7 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 | Script | What it does |
 |---|---|
 | `vlm_yolo_prep.py` | Build a labelled YOLOv8 dataset from raw photos using a local VLM — no manual annotation needed |
+| `voc_to_yolo.py` | Convert an existing Pascal VOC annotated dataset to YOLOv8 format |
 | `train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
 | `detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
 
@@ -19,20 +20,23 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 ## Full Pipeline
 
 ```
-[Raw photos]
-     |
-     v
-vlm_yolo_prep.py        ← auto-label with a local VLM
-     |
-     v
-Labelled dataset
-(train / val + data.yaml)
-     |
-     v
-train_detector.py       ← train YOLOv8
-     |
-     v
-detect_images.py        ← run inference
+[Raw photos]                    [Existing VOC dataset]
+     |                                   |
+     v                                   v
+vlm_yolo_prep.py            voc_to_yolo.py
+(auto-label with VLM)       (convert annotations)
+     |                                   |
+     +-----------------------------------+
+                     |
+                     v
+          Labelled YOLOv8 dataset
+          (train / val + data.yaml)
+                     |
+                     v
+          train_detector.py
+                     |
+                     v
+          detect_images.py
 ```
 
 ---
@@ -45,12 +49,12 @@ pip install ultralytics opencv-python psutil requests pillow pyyaml
 
 - Python 3.8+
 - PyTorch with CUDA (for GPU training) — install from [pytorch.org](https://pytorch.org/get-started/locally/)
-- [LM Studio](https://lmstudio.ai/) with a vision model loaded (for dataset preparation)
+- [LM Studio](https://lmstudio.ai/) with a vision model loaded (for `vlm_yolo_prep.py` only)
 - Dataset in YOLOv8 format (e.g. exported from [Roboflow](https://roboflow.com))
 
 ---
 
-## Step 1 — Build a Dataset (`vlm_yolo_prep.py`)
+## Step 1a — Build a Dataset from Raw Photos (`vlm_yolo_prep.py`)
 
 Sends each photo to a Vision-Language Model running locally in LM Studio, gets bounding box coordinates back, and writes a complete YOLOv8 dataset with no manual labelling.
 
@@ -121,12 +125,72 @@ dataset/
 Generated `data.yaml`:
 ```yaml
 train: ../train/images
-val: ../valid/images
+val: ../val/images
 nc: 1
 names: ['screw']
 ```
 
 > **Note:** VLM-generated labels are a strong starting point but not perfect. Review the `preview/` folder and correct any bad detections in [Roboflow](https://roboflow.com) or [LabelImg](https://github.com/HumanSignal/labelImg) before final training.
+
+---
+
+## Step 1b — Convert an Existing VOC Dataset (`voc_to_yolo.py`)
+
+If you already have a dataset annotated in Pascal VOC format (XML files), this script converts it to YOLOv8 format in one command — no manual work needed.
+
+### Basic usage
+```bash
+python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset
+```
+
+Classes are auto-discovered from the XML files and sorted alphabetically. Use `--classes` to control the order (and therefore the class IDs) explicitly.
+
+### Supported VOC layouts
+
+The script handles all common VOC folder structures automatically:
+
+```
+# Flat — images and XMLs in the same folder
+input/
+  image1.jpg  image1.xml
+  image2.jpg  image2.xml
+
+# Standard VOC — separate subfolders
+input/
+  JPEGImages/   image1.jpg
+  Annotations/  image1.xml
+
+# Pre-split — already divided into train/val/test
+input/
+  train/  image1.jpg  image1.xml
+  val/    image2.jpg  image2.xml
+```
+
+### All arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--input` | required | Folder containing VOC images and XML annotation files |
+| `--output` | required | Output folder for the YOLOv8 dataset (created if absent, auto-versioned if not empty) |
+| `--classes` | auto | Class names in order — controls ID assignment. Auto-discovered and sorted alphabetically if omitted |
+| `--train` | `0.70` | Train split ratio |
+| `--val` | `0.20` | Val split ratio (gets remainder when `--enable-test` is off) |
+| `--seed` | `42` | Random seed for reproducible splits |
+| `--enable-test` | off | Create a test split in addition to train and val |
+
+### Examples
+
+```bash
+# Auto-discover classes, 70/30 split
+python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset
+
+# Control class order (first = ID 0, second = ID 1, ...)
+python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset \
+    --classes screw bolt "hex bolt"
+
+# With test split
+python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset --enable-test
+```
 
 ---
 
@@ -254,23 +318,24 @@ Supported formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
 
 ## Dataset Format
 
-All scripts expect datasets in **YOLOv8 format** with a `data.yaml` file:
+All scripts produce and consume datasets in **YOLOv8 format** with a `data.yaml` file:
 
 ```yaml
 train: ../train/images
-val:   ../valid/images
+val: ../val/images
 
 nc: 1
 names: ['my_object']
 ```
 
-`vlm_yolo_prep.py` generates this file automatically. [Roboflow](https://roboflow.com) also exports directly in this format and is recommended for manual labelling and dataset management.
+Both `vlm_yolo_prep.py` and `voc_to_yolo.py` generate this file automatically. [Roboflow](https://roboflow.com) also exports directly in this format and is recommended for manual labelling and dataset management.
 
 ---
 
 ## Tips
 
 - **Poor detections from the VLM?** Lower `--confidence` to `0.5` and review the `preview/` folder. The VLM may need a more descriptive object name.
+- **VOC class names don't match what you want?** Use `--classes` to rename or reorder them when converting.
 - **mAP@0.50 < 0.80 after training?** Add more labelled images — dataset size is the biggest factor in accuracy.
 - **OOM crash during training?** Add `--batch 8` or `--batch 4` to override the auto-calculated batch size.
 - **PC crashed mid-training?** Run with `--resume` — picks up from the last saved epoch automatically.
