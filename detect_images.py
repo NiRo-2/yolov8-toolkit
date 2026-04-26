@@ -221,15 +221,31 @@ def run(args):
                 json.dump(items, f, indent=2)
             print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  {json_path.name}")
 
-        # Save logic -- skip empty images unless --save-all
+        # Save logic – preserve EXIF metadata when writing annotated images
+        def save_image_with_exif(src_path: Path, img_array, dest_path: Path):
+            """Save img_array to dest_path preserving EXIF from src_path.
+
+            Uses Pillow to copy EXIF data because cv2.imwrite drops it.
+            """
+            from PIL import Image
+            # Load original EXIF
+            with Image.open(src_path) as orig_img:
+                exif_data = orig_img.info.get('exif')
+                # Convert numpy array (BGR) to RGB Pillow Image
+                rgb_img = Image.fromarray(cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB))
+                if exif_data:
+                    rgb_img.save(dest_path, exif=exif_data)
+                else:
+                    rgb_img.save(dest_path)
+
         if n_det > 0:
             out_path = output_dir / img_path.name
-            cv2.imwrite(str(out_path), annotated)
+            save_image_with_exif(img_path, annotated, out_path)
             print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  {n_det} detection(s)  [saved]")
         else:
             if args.save_all:
                 out_path = output_dir / img_path.name
-                cv2.imwrite(str(out_path), annotated)
+                save_image_with_exif(img_path, annotated, out_path)
                 print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  0 detections  [saved]")
             else:
                 print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  0 detections  [skipped]")

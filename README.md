@@ -333,6 +333,7 @@ JSON format per detection:
 | `--export-json` | `True` | Export detection JSON + labels.txt in detections/ |
 
 Annotated images are saved to `<images_dir>/detections/` — originals are never modified.
+Output images preserve all original EXIF metadata (GPS, camera model, sensor data, etc.).
 
 Supported formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
 
