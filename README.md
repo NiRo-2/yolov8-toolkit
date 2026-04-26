@@ -302,6 +302,27 @@ python detect_images.py \
 python detect_images.py --images /path/to/images --model best.pt --conf 0.5
 ```
 
+### Export detection data as JSON
+```bash
+python detect_images.py --images /path/to/images --model best.pt --export-json
+```
+
+Saves `<images_dir>/detections/<name>.json` per image with detections, plus `labels.txt` mapping class IDs to names.
+
+JSON format per detection:
+```json
+{
+  "class_id": 0,
+  "class_name": "screw",
+  "confidence": 0.95,
+  "pixel": {"x1": 120, "y1": 80, "x2": 340, "y2": 520},
+  "yolo": {"cx": 0.273438, "cy": 0.317188, "bw": 0.21875, "bh": 0.4375}
+}
+```
+
+- `pixel` — absolute (x1, y1, x2, y2) in image coordinates
+- `yolo` — normalized (cx, cy, bw, bh) / (W, H) for YOLO training/export
+
 ### All arguments
 
 | Argument | Default | Description |
@@ -309,6 +330,7 @@ python detect_images.py --images /path/to/images --model best.pt --conf 0.5
 | `--images` | required | Path to folder of input images |
 | `--model` | required | Path to trained `.pt` model file |
 | `--conf` | `0.25` | Minimum confidence threshold (0.0–1.0) |
+| `--export-json` | `True` | Export detection JSON + labels.txt in detections/ |
 
 Annotated images are saved to `<images_dir>/detections/` — originals are never modified.
 

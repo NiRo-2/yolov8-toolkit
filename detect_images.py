@@ -6,22 +6,26 @@ draws bounding boxes with confidence scores, and saves results.
 
 Usage:
     python detect_images.py --images /path/to/images --model /path/to/best.pt
-    python detect_images.py --images /path/to/images --model /path/to/best.pt --conf 0.5
+    python detect_images.py --images /path/to/images --model /path/to/best.pt --export-json
 
-    --images  path to directory containing images (required)
-              supports Windows paths: c:\Users\Ni\Desktop\images
-    --model   path to trained .pt model file (required)
-    --conf    minimum confidence threshold, 0.0-1.0 (default: 0.25)
+    --images      path to directory containing images (required)
+                  supports Windows paths: c:\Users\Ni\Desktop\images
+    --model       path to trained .pt model file (required)
+    --conf        minimum confidence threshold, 0.0-1.0 (default: 0.25)
+    --export-json export detections as JSON in detections/ (default: True)
 
 Output:
     <images_dir>/detections/    <- annotated images saved here
+    <images_dir>/detections/    <- detection JSON files
+    <images_dir>/detections/labels.txt  <- class_id → class_name mapping
 """
 
 import argparse
+import json
 import sys
 import cv2
 from pathlib import Path
-from ultralytics import YOLO
+from ultralytics import YOLO  # type: ignore[union-attr]
 
 
 # -- Config --------------------------------------------------------------------
@@ -73,11 +77,41 @@ def parse_args():
         "--save-all", action="store_true", default=False,
         help="Save all images including those with no detections"
     )
+    parser.add_argument(
+        "--export-json", action="store_true", default=True,
+        help="Export detections as JSON in detections/ (default: True)"
+    )
 
     return parser.parse_args()
 
 
 # -- Drawing -------------------------------------------------------------------
+
+def export_json(img_array, results, class_names):
+    """Export detections as JSON with pixel + YOLO normalized coordinates."""
+    h, w = img_array.shape[:2]
+    items = []
+    for box in results[0].boxes:
+        x1, y1, x2, y2 = map(int, box.xyxy[0])
+        conf = float(box.conf[0])
+        cls_id = int(box.cls[0])
+        cls_name = class_names[cls_id]
+
+        # YOLO normalized format (cx, cy, bw, bh) / (W, H)
+        yolo_cx = (x1 + x2) / (2 * w)
+        yolo_cy = (y1 + y2) / (2 * h)
+        yolo_bw = (x2 - x1) / w
+        yolo_bh = (y2 - y1) / h
+
+        items.append({
+            "class_id": cls_id,
+            "class_name": cls_name,
+            "confidence": round(conf, 4),
+            "pixel": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+            "yolo": {"cx": round(yolo_cx, 6), "cy": round(yolo_cy, 6), "bw": round(yolo_bw, 6), "bh": round(yolo_bh, 6)},
+        })
+    return items
+
 
 def draw_detections(image, results, class_names):
     """Draw bounding boxes and confidence labels on image."""
@@ -94,7 +128,7 @@ def draw_detections(image, results, class_names):
         label = f"{cls_name} {conf:.2f}"
 
         # Measure label size for background
-        (lw, lh), baseline = cv2.getTextSize(label, FONT, FONT_SCALE, FONT_THICKNESS)
+        (lw, lh), _ = cv2.getTextSize(label, FONT, FONT_SCALE, FONT_THICKNESS)
 
         # Draw label background
         label_y = max(y1, lh + LABEL_PADDING * 2)
@@ -179,6 +213,14 @@ def run(args):
         # Draw detections
         annotated = draw_detections(image.copy(), results, class_names)
 
+        # Export JSON if requested
+        if args.export_json and n_det > 0:
+            items = export_json(image, results, class_names)
+            json_path = output_dir / img_path.with_suffix(".json").name
+            with open(json_path, "w") as f:
+                json.dump(items, f, indent=2)
+            print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  {json_path.name}")
+
         # Save logic -- skip empty images unless --save-all
         if n_det > 0:
             out_path = output_dir / img_path.name
@@ -191,6 +233,14 @@ def run(args):
                 print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  0 detections  [saved]")
             else:
                 print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  0 detections  [skipped]")
+
+    # Export labels.txt (class_id → class_name mapping)
+    if args.export_json:
+        labels_path = output_dir / "labels.txt"
+        with open(labels_path, "w") as f:
+            for cid, cname in sorted(class_names.items(), key=lambda x: x[0]):
+                f.write(f"{cid}\t{cname}\n")
+        print(f"\n  {output_dir}/labels.txt  ({len(class_names)} class(es))")
 
     # Summary
     print(f"\n{'='*60}")
