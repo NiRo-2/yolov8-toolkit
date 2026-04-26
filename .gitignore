@@ -213,6 +213,9 @@ __marimo__/
 # YOLOv8 training outputs
 runs/
 
+# Detection output (annotated images + JSON)
+detections/
+
 # Model weights — too large for git (use GitHub Releases instead)
 *.pt
 *.engine
