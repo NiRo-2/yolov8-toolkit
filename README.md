@@ -342,6 +342,13 @@ Use `--allow-missing-exiftool` only if you accept limited Pillow-only metadata c
 
 Supported formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
 
+### ExifTool helper batch (Windows)
+
+Use `_Run_exiftool.bat` to inspect metadata for a single image and save full output to:
+`./exiftool/outputs/`.
+
+The helper expects ExifTool files in `./exiftool/`. If that directory is missing, the batch script exits with instructions to download ExifTool and place it there.
+
 ---
 
 ## Dataset Format

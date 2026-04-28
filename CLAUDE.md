@@ -14,6 +14,7 @@ A YOLOv8 toolkit for building datasets, training detectors, and running inferenc
 | `voc_to_yolo.py` | Convert existing Pascal VOC XML annotations to YOLOv8 format |
 | `train_detector.py` | Train YOLOv8 detector with auto-configured hardware-aware hyperparameters |
 | `detect_images.py` | Run trained model on image folder, draw boxes, export JSON detections |
+| `_Run_exiftool.bat` | Windows helper to dump full image metadata to `./exiftool/outputs/` |
 
 ## Common Commands
 
