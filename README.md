@@ -336,7 +336,8 @@ JSON format per detection:
 
 Annotated images are saved to `<images_dir>/detections/` — originals are never modified.
 By default, full metadata transfer requires ExifTool when an output image is actually being saved.
-ExifTool lookup order is: explicit `--exiftool`, then `PATH`, then repo-local `./exiftool/` (`exiftool.exe` / `exiftool(-k).exe`).
+ExifTool lookup order is: explicit `--exiftool`, then `PATH`, then repo-local `./exiftool/` (`exiftool.exe` / `exiftool`), then bundled Perl runtime (`./exiftool/exiftool_files/perl.exe` + `exiftool.pl`).
+`exiftool(-k).exe` is intentionally ignored because it is interactive (`-- press ENTER --`) and can block batch runs.
 If ExifTool is missing at save time, the script exits with guidance to download it from [https://exiftool.org/](https://exiftool.org/) into `./exiftool/` or pass `--exiftool`.
 Use `--allow-missing-exiftool` only if you accept limited Pillow-only metadata copy.
 

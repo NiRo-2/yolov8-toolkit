@@ -37,9 +37,10 @@ SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp
 DEFAULT_EXIFTOOL_DIR = Path(__file__).resolve().parent / "exiftool"
 DEFAULT_EXIFTOOL_CANDIDATES = (
     DEFAULT_EXIFTOOL_DIR / "exiftool.exe",
-    DEFAULT_EXIFTOOL_DIR / "exiftool(-k).exe",
     DEFAULT_EXIFTOOL_DIR / "exiftool",
 )
+DEFAULT_EXIFTOOL_PERL = DEFAULT_EXIFTOOL_DIR / "exiftool_files" / "perl.exe"
+DEFAULT_EXIFTOOL_PL = DEFAULT_EXIFTOOL_DIR / "exiftool_files" / "exiftool.pl"
 EXIFTOOL_DOWNLOAD_URL = "https://exiftool.org/"
 
 # Box and label style
@@ -168,23 +169,33 @@ def draw_detections(image, results, class_names):
     return image
 
 
-def resolve_exiftool_path(exiftool_arg: Optional[str]) -> Optional[str]:
-    """Resolve exiftool binary from explicit arg, PATH, or default repo folder."""
+def resolve_exiftool_command(exiftool_arg: Optional[str]):
+    """Resolve exiftool invocation command and optional diagnostic reason."""
     if exiftool_arg:
         candidate = normalize_path(exiftool_arg)
-        if candidate.exists():
-            return str(candidate)
-        return None
+        if not candidate.exists():
+            return None, f"explicit --exiftool path does not exist: {candidate}"
+        if "(-k)" in candidate.name.lower():
+            return None, "explicit --exiftool points to exiftool(-k).exe, which is interactive and unsupported"
+        return [str(candidate)], None
 
-    for name in ("exiftool", "exiftool.exe", "exiftool(-k).exe"):
+    for name in ("exiftool", "exiftool.exe"):
         resolved = shutil.which(name)
-        if resolved:
-            return resolved
+        if resolved and "(-k)" not in Path(resolved).name.lower():
+            return [resolved], None
 
     for candidate in DEFAULT_EXIFTOOL_CANDIDATES:
-        if candidate.exists():
-            return str(candidate)
-    return None
+        if candidate.exists() and "(-k)" not in candidate.name.lower():
+            return [str(candidate)], None
+
+    # Fallback to bundled Perl runtime when exiftool.exe is not present.
+    if DEFAULT_EXIFTOOL_PERL.exists() and DEFAULT_EXIFTOOL_PL.exists():
+        return [str(DEFAULT_EXIFTOOL_PERL), str(DEFAULT_EXIFTOOL_PL)], None
+
+    k_variant = DEFAULT_EXIFTOOL_DIR / "exiftool(-k).exe"
+    if k_variant.exists():
+        return None, "found only exiftool(-k).exe in default directory; use exiftool.exe or bundled Perl runtime"
+    return None, None
 
 
 # -- Main ----------------------------------------------------------------------
@@ -231,7 +242,7 @@ def run(args):
     # Load model
     model = YOLO(str(model_path))
     class_names = model.names
-    exiftool_path = resolve_exiftool_path(args.exiftool)
+    exiftool_cmd, exiftool_resolve_reason = resolve_exiftool_command(args.exiftool)
     exiftool_warned = False
 
     # Process images
@@ -268,7 +279,7 @@ def run(args):
             to preserve full metadata blocks (XMP/MPF/vendor APP segments).
             """
             nonlocal exiftool_warned
-            if not exiftool_path and not args.allow_missing_exiftool:
+            if not exiftool_cmd and not args.allow_missing_exiftool:
                 print("[ERROR] exiftool is required when saving images to detections/.")
                 if not DEFAULT_EXIFTOOL_DIR.exists():
                     print(f"        Default directory missing: {DEFAULT_EXIFTOOL_DIR}")
@@ -276,7 +287,9 @@ def run(args):
                     print(f"        URL: {EXIFTOOL_DOWNLOAD_URL}")
                     print("        or pass --exiftool /path/to/exiftool(.exe).")
                 else:
-                    print(f"        exiftool not found in default directory: {DEFAULT_EXIFTOOL_DIR}")
+                    print(f"        exiftool runtime not available in default directory: {DEFAULT_EXIFTOOL_DIR}")
+                    if exiftool_resolve_reason:
+                        print(f"        Reason: {exiftool_resolve_reason}")
                     print("        Download exiftool and place exiftool.exe there,")
                     print(f"        URL: {EXIFTOOL_DOWNLOAD_URL}")
                     print("        or pass --exiftool /path/to/exiftool(.exe).")
@@ -336,9 +349,8 @@ def run(args):
 
             # Pillow cannot preserve all JPEG APP metadata blocks. If exiftool is
             # present, copy all writable metadata groups from source to output.
-            if exiftool_path:
-                cmd = [
-                    exiftool_path,
+            if exiftool_cmd:
+                cmd = exiftool_cmd + [
                     "-overwrite_original",
                     "-m",
                     "-P",
