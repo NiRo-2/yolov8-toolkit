@@ -307,21 +307,40 @@ python detect_images.py --images /path/to/images --model best.pt --conf 0.5
 python detect_images.py --images /path/to/images --model best.pt --export-json
 ```
 
-Saves `<images_dir>/detections/<name>.json` per image with detections, plus `labels.txt` mapping class IDs to names.
+Saves `<images_dir>/detections/<name>.json` for images with detections, plus `labels.txt` mapping class IDs to names.
 
-JSON format per detection:
+### JSON-only mode (no annotated image files)
+```bash
+python detect_images.py --images /path/to/images --model best.pt --no-export-annotated-images
+```
+
+JSON format:
 ```json
 {
-  "class_id": 0,
-  "class_name": "screw",
-  "confidence": 0.95,
-  "pixel": {"x1": 120, "y1": 80, "x2": 340, "y2": 520},
-  "yolo": {"cx": 0.273438, "cy": 0.317188, "bw": 0.21875, "bh": 0.4375}
+  "image": {
+    "file_name": "sample.jpg",
+    "source_path": "D:/data/sample.jpg",
+    "width": 1920,
+    "height": 1080
+  },
+  "metadata": {
+    "EXIF:DateTimeOriginal": "2026:04:24 15:26:16"
+  },
+  "detections": [
+    {
+      "class_id": 0,
+      "class_name": "screw",
+      "confidence": 0.95,
+      "pixel": {"x1": 120, "y1": 80, "x2": 340, "y2": 520},
+      "yolo": {"cx": 0.273438, "cy": 0.317188, "bw": 0.21875, "bh": 0.4375}
+    }
+  ]
 }
 ```
 
-- `pixel` — absolute (x1, y1, x2, y2) in image coordinates
-- `yolo` — normalized (cx, cy, bw, bh) / (W, H) for YOLO training/export
+- `metadata` — full ExifTool metadata when available (`-j -a -u -G1` output), with Pillow EXIF fallback
+- `detections[*].pixel` — absolute (x1, y1, x2, y2) in image coordinates
+- `detections[*].yolo` — normalized (cx, cy, bw, bh) / (W, H) for YOLO training/export
 
 ### All arguments
 
@@ -331,10 +350,12 @@ JSON format per detection:
 | `--model` | required | Path to trained `.pt` model file |
 | `--conf` | `0.25` | Minimum confidence threshold (0.0–1.0) |
 | `--export-json` | `True` | Export detection JSON + labels.txt in detections/ |
+| `--export-annotated-images` | `True` | Save annotated detection images |
+| `--no-export-annotated-images` | `False` | Disable annotated image save and write JSON-only outputs |
 | `--exiftool` | auto | Optional path to ExifTool executable for full metadata transfer |
 | `--allow-missing-exiftool` | `False` | Allow saving with Pillow-only metadata copy when ExifTool is unavailable |
 
-Annotated images are saved to `<images_dir>/detections/` — originals are never modified.
+Annotated images are saved to `<images_dir>/detections/` when enabled — originals are never modified.
 By default, full metadata transfer requires ExifTool when an output image is actually being saved.
 ExifTool lookup order is: explicit `--exiftool`, then `PATH`, then repo-local `./exiftool/` (`exiftool.exe` / `exiftool`), then bundled Perl runtime (`./exiftool/exiftool_files/perl.exe` + `exiftool.pl`).
 `exiftool(-k).exe` is intentionally ignored because it is interactive (`-- press ENTER --`) and can block batch runs.

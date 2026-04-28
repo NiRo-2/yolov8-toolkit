@@ -29,6 +29,7 @@ from typing import Optional
 import cv2
 from pathlib import Path
 from ultralytics import YOLO  # type: ignore[union-attr]
+from PIL import Image, ExifTags
 
 
 # -- Config --------------------------------------------------------------------
@@ -93,6 +94,17 @@ def parse_args():
         help="Export detections as JSON in detections/ (default: True)"
     )
     parser.add_argument(
+        "--export-annotated-images", dest="export_annotated_images",
+        action="store_true",
+        help="Save annotated output images (default: True)"
+    )
+    parser.add_argument(
+        "--no-export-annotated-images", dest="export_annotated_images",
+        action="store_false",
+        help="Disable annotated image export and write JSON-only outputs for detections"
+    )
+    parser.set_defaults(export_annotated_images=True)
+    parser.add_argument(
         "--exiftool", type=str, default=None,
         help="Optional path to exiftool executable for full metadata copy"
     )
@@ -130,6 +142,33 @@ def export_json(img_array, results, class_names):
             "yolo": {"cx": round(yolo_cx, 6), "cy": round(yolo_cy, 6), "bw": round(yolo_bw, 6), "bh": round(yolo_bh, 6)},
         })
     return items
+
+
+def extract_image_metadata(img_path: Path, exiftool_cmd):
+    """Extract full metadata via exiftool, with Pillow EXIF fallback."""
+    if exiftool_cmd:
+        cmd = exiftool_cmd + ["-j", "-a", "-u", "-G1", str(img_path)]
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if proc.returncode == 0:
+            try:
+                payload = json.loads(proc.stdout)
+                if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+                    return payload[0]
+            except json.JSONDecodeError:
+                pass
+
+    # Fallback: limited EXIF from Pillow only.
+    try:
+        with Image.open(img_path) as im:
+            exif = im.getexif()
+            if not exif:
+                return {}
+            return {
+                ExifTags.TAGS.get(tag_id, str(tag_id)): value
+                for tag_id, value in exif.items()
+            }
+    except Exception:
+        return {}
 
 
 def draw_detections(image, results, class_names):
@@ -237,6 +276,7 @@ def run(args):
     print(f"  model      : {model_path}")
     print(f"  confidence : {args.conf}")
     print(f"  output     : {output_dir}")
+    print(f"  save images: {args.export_annotated_images}")
     print()
 
     # Load model
@@ -266,9 +306,21 @@ def run(args):
         # Export JSON if requested
         if args.export_json and n_det > 0:
             items = export_json(image, results, class_names)
+            metadata = extract_image_metadata(img_path, exiftool_cmd)
+            h, w = image.shape[:2]
+            payload = {
+                "image": {
+                    "file_name": img_path.name,
+                    "source_path": str(img_path),
+                    "width": w,
+                    "height": h,
+                },
+                "metadata": metadata,
+                "detections": items,
+            }
             json_path = output_dir / img_path.with_suffix(".json").name
             with open(json_path, "w") as f:
-                json.dump(items, f, indent=2)
+                json.dump(payload, f, indent=2, default=str)
             print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  {json_path.name}")
 
         # Save logic – preserve EXIF metadata when writing annotated images
@@ -296,7 +348,6 @@ def run(args):
                 print("        To bypass (limited metadata copy), use --allow-missing-exiftool.")
                 sys.exit(1)
 
-            from PIL import Image
             dest_ext = dest_path.suffix.lower()
             is_jpeg = dest_ext in {".jpg", ".jpeg"}
 
@@ -368,6 +419,9 @@ def run(args):
                 exiftool_warned = True
 
         if n_det > 0:
+            if not args.export_annotated_images:
+                print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  {n_det} detection(s)  [json-only]")
+                continue
             out_path = output_dir / img_path.name
             save_image_with_exif(img_path, annotated, out_path)
             print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  {n_det} detection(s)  [saved]")
