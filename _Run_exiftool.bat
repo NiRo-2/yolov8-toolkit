@@ -5,7 +5,8 @@ set "scriptDir=%~dp0"
 set "exiftoolDir=%scriptDir%exiftool"
 set "outputDir=%exiftoolDir%\outputs"
 
-set "exiftoolExePath=%exiftoolDir%\exiftool(-k).exe"
+set "exiftoolExePath=%exiftoolDir%\exiftool.exe"
+set "exiftoolExeKPath=%exiftoolDir%\exiftool(-k).exe"
 set "perlPath=%exiftoolDir%\exiftool_files\perl.exe"
 set "exiftoolPlPath=%exiftoolDir%\exiftool_files\exiftool.pl"
 
@@ -14,6 +15,7 @@ if not exist "%exiftoolDir%" (
     echo "%exiftoolDir%"
     echo.
     echo Download ExifTool and place it in this folder.
+    echo URL: https://exiftool.org/
     echo Expected executable path:
     echo "%exiftoolExePath%"
     pause
@@ -61,9 +63,19 @@ if exist "%perlPath%" if exist "%exiftoolPlPath%" (
     goto done
 )
 
+if exist "%exiftoolExeKPath%" (
+    echo WARNING: Found exiftool(-k).exe only. This variant pauses with "-- press ENTER --".
+    echo Using it anyway as a fallback.
+    echo Running:
+    echo "%exiftoolExeKPath%"
+    powershell -NoProfile -Command "& { & '%exiftoolExeKPath%' '%imagePath%' 2>&1 | Tee-Object -FilePath '%outputFile%' }"
+    goto done
+)
+
 echo ERROR: Could not find ExifTool runtime files.
 echo Checked:
 echo "%exiftoolExePath%"
+echo "%exiftoolExeKPath%"
 echo "%perlPath%"
 echo "%exiftoolPlPath%"
 pause
