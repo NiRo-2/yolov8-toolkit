@@ -228,15 +228,55 @@ def run(args):
             Uses Pillow to copy EXIF data because cv2.imwrite drops it.
             """
             from PIL import Image
-            # Load original EXIF
+            dest_ext = dest_path.suffix.lower()
+            is_jpeg = dest_ext in {".jpg", ".jpeg"}
+
+            # Read source metadata from both EXIF object and raw info payloads.
             with Image.open(src_path) as orig_img:
-                exif_data = orig_img.info.get('exif')
+                info = dict(orig_img.info)
+                exif_data = None
+
+                # Prefer normalized EXIF table when available.
+                try:
+                    exif = orig_img.getexif()
+                    if exif and len(exif) > 0:
+                        exif_data = exif.tobytes()
+                except Exception:
+                    exif_data = None
+
+                # Fallback to raw EXIF bytes from the source container.
+                if not exif_data:
+                    exif_data = info.get("exif")
+
+                save_kwargs = {}
+                if exif_data:
+                    save_kwargs["exif"] = exif_data
+
+                icc_profile = info.get("icc_profile")
+                if icc_profile:
+                    save_kwargs["icc_profile"] = icc_profile
+
+                dpi = info.get("dpi")
+                if dpi:
+                    save_kwargs["dpi"] = dpi
+
+                # JFIF fields are JPEG-specific and may be rejected by other formats.
+                if is_jpeg:
+                    for key in ("jfif", "jfif_version", "jfif_unit", "jfif_density"):
+                        if key in info:
+                            save_kwargs[key] = info[key]
+
                 # Convert numpy array (BGR) to RGB Pillow Image
                 rgb_img = Image.fromarray(cv2.cvtColor(img_array, cv2.COLOR_BGR2RGB))
-                if exif_data:
-                    rgb_img.save(dest_path, exif=exif_data)
-                else:
-                    rgb_img.save(dest_path)
+                try:
+                    rgb_img.save(dest_path, **save_kwargs)
+                except TypeError:
+                    # Fallback: keep widely supported metadata keys only.
+                    fallback_kwargs = {}
+                    for key in ("exif", "icc_profile", "dpi"):
+                        if key in save_kwargs:
+                            fallback_kwargs[key] = save_kwargs[key]
+                    rgb_img.save(dest_path, **fallback_kwargs)
 
         if n_det > 0:
             out_path = output_dir / img_path.name
