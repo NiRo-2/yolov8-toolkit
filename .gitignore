@@ -3,6 +3,12 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+#Executable files
+_Run_detect_images.bat
+_Run_train_detector.bat
+_Run_vlm_yolo_prep.bat
+_Run_voc_to_yolo.bat
+
 # C extensions
 *.so
 
