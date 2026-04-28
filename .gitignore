@@ -216,6 +216,9 @@ runs/
 # Detection output (annotated images + JSON)
 detections/
 
+# Local exiftool binaries
+exiftool/
+
 # Model weights — too large for git (use GitHub Releases instead)
 *.pt
 *.engine

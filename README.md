@@ -331,9 +331,14 @@ JSON format per detection:
 | `--model` | required | Path to trained `.pt` model file |
 | `--conf` | `0.25` | Minimum confidence threshold (0.0–1.0) |
 | `--export-json` | `True` | Export detection JSON + labels.txt in detections/ |
+| `--exiftool` | auto | Optional path to ExifTool executable for full metadata transfer |
+| `--allow-missing-exiftool` | `False` | Allow saving with Pillow-only metadata copy when ExifTool is unavailable |
 
 Annotated images are saved to `<images_dir>/detections/` — originals are never modified.
-Output images preserve source metadata with best-effort copy (EXIF, ICC profile, DPI, and JPEG JFIF fields when supported by the destination format).
+By default, full metadata transfer requires ExifTool when an output image is actually being saved.
+ExifTool lookup order is: explicit `--exiftool`, then `PATH`, then repo-local `./exiftool/` (`exiftool.exe` / `exiftool(-k).exe`).
+If ExifTool is missing at save time, the script exits with guidance to download it into `./exiftool/` or pass `--exiftool`.
+Use `--allow-missing-exiftool` only if you accept limited Pillow-only metadata copy.
 
 Supported formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
 

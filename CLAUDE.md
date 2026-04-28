@@ -62,6 +62,6 @@ All scripts share common patterns:
 - `vlm_yolo_prep.py`: MAX_INFERENCE_SIZE (line ~431) controls VLM input resolution — match to LM Studio context setting (4000 for 32k, 2048 for 16k, 1280 for 8k)
 - `train_detector.py`: imgsz only raised if batch stays >= 8; capped to native image resolution (no upscaling)
 - `detect_images.py`: JSON export includes both pixel coords (x1,y1,x2,y2) and YOLO normalized (cx,cy,bw,bh); labels.txt maps class_id to class_name
-- `detect_images.py`: annotated-image save path uses Pillow metadata transfer with best-effort EXIF/ICC/DPI copy (plus JPEG JFIF fields where valid)
+- `detect_images.py`: annotated-image save path uses Pillow metadata transfer plus ExifTool (`--exiftool`, PATH, or repo-local `./exiftool/`) for full metadata groups; save-time fallback can be enabled with `--allow-missing-exiftool`
 - All scripts create auto-versioned output dirs (`dataset` → `dataset_v2` → `dataset_v3`) when target exists and is non-empty
 - Type checker false positive on `from ultralytics import YOLO` — already suppressed with `# type: ignore[union-attr]`

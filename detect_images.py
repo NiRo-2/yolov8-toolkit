@@ -22,7 +22,10 @@ Output:
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
+from typing import Optional
 import cv2
 from pathlib import Path
 from ultralytics import YOLO  # type: ignore[union-attr]
@@ -31,6 +34,12 @@ from ultralytics import YOLO  # type: ignore[union-attr]
 # -- Config --------------------------------------------------------------------
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
+DEFAULT_EXIFTOOL_DIR = Path(__file__).resolve().parent / "exiftool"
+DEFAULT_EXIFTOOL_CANDIDATES = (
+    DEFAULT_EXIFTOOL_DIR / "exiftool.exe",
+    DEFAULT_EXIFTOOL_DIR / "exiftool(-k).exe",
+    DEFAULT_EXIFTOOL_DIR / "exiftool",
+)
 
 # Box and label style
 BOX_COLOR       = (0, 200, 0)      # green
@@ -80,6 +89,14 @@ def parse_args():
     parser.add_argument(
         "--export-json", action="store_true", default=True,
         help="Export detections as JSON in detections/ (default: True)"
+    )
+    parser.add_argument(
+        "--exiftool", type=str, default=None,
+        help="Optional path to exiftool executable for full metadata copy"
+    )
+    parser.add_argument(
+        "--allow-missing-exiftool", action="store_true", default=False,
+        help="Allow run without exiftool (metadata preservation will be limited)"
     )
 
     return parser.parse_args()
@@ -150,6 +167,25 @@ def draw_detections(image, results, class_names):
     return image
 
 
+def resolve_exiftool_path(exiftool_arg: Optional[str]) -> Optional[str]:
+    """Resolve exiftool binary from explicit arg, PATH, or default repo folder."""
+    if exiftool_arg:
+        candidate = normalize_path(exiftool_arg)
+        if candidate.exists():
+            return str(candidate)
+        return None
+
+    for name in ("exiftool", "exiftool.exe", "exiftool(-k).exe"):
+        resolved = shutil.which(name)
+        if resolved:
+            return resolved
+
+    for candidate in DEFAULT_EXIFTOOL_CANDIDATES:
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
 # -- Main ----------------------------------------------------------------------
 
 def run(args):
@@ -194,6 +230,8 @@ def run(args):
     # Load model
     model = YOLO(str(model_path))
     class_names = model.names
+    exiftool_path = resolve_exiftool_path(args.exiftool)
+    exiftool_warned = False
 
     # Process images
     total_detections = 0
@@ -223,10 +261,25 @@ def run(args):
 
         # Save logic – preserve EXIF metadata when writing annotated images
         def save_image_with_exif(src_path: Path, img_array, dest_path: Path):
-            """Save img_array to dest_path preserving EXIF from src_path.
+            """Save img_array to dest_path preserving metadata from src_path.
 
-            Uses Pillow to copy EXIF data because cv2.imwrite drops it.
+            Uses Pillow for baseline metadata copy and exiftool (if available)
+            to preserve full metadata blocks (XMP/MPF/vendor APP segments).
             """
+            nonlocal exiftool_warned
+            if not exiftool_path and not args.allow_missing_exiftool:
+                print("[ERROR] exiftool is required when saving images to detections/.")
+                if not DEFAULT_EXIFTOOL_DIR.exists():
+                    print(f"        Default directory missing: {DEFAULT_EXIFTOOL_DIR}")
+                    print("        Download exiftool and put it in this directory,")
+                    print("        or pass --exiftool /path/to/exiftool(.exe).")
+                else:
+                    print(f"        exiftool not found in default directory: {DEFAULT_EXIFTOOL_DIR}")
+                    print("        Download exiftool and place exiftool.exe there,")
+                    print("        or pass --exiftool /path/to/exiftool(.exe).")
+                print("        To bypass (limited metadata copy), use --allow-missing-exiftool.")
+                sys.exit(1)
+
             from PIL import Image
             dest_ext = dest_path.suffix.lower()
             is_jpeg = dest_ext in {".jpg", ".jpeg"}
@@ -277,6 +330,27 @@ def run(args):
                         if key in save_kwargs:
                             fallback_kwargs[key] = save_kwargs[key]
                     rgb_img.save(dest_path, **fallback_kwargs)
+
+            # Pillow cannot preserve all JPEG APP metadata blocks. If exiftool is
+            # present, copy all writable metadata groups from source to output.
+            if exiftool_path:
+                cmd = [
+                    exiftool_path,
+                    "-overwrite_original",
+                    "-m",
+                    "-P",
+                    "-TagsFromFile",
+                    str(src_path),
+                    "-all:all",
+                    "-unsafe",
+                    str(dest_path),
+                ]
+                proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                if proc.returncode != 0:
+                    print(f"  [WARN] exiftool metadata copy failed for {dest_path.name}: {proc.stderr.strip()}")
+            elif is_jpeg and not exiftool_warned:
+                print("  [WARN] exiftool not found; JPEG metadata copy is limited to Pillow-supported fields.")
+                exiftool_warned = True
 
         if n_det > 0:
             out_path = output_dir / img_path.name
