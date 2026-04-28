@@ -337,7 +337,7 @@ JSON format per detection:
 Annotated images are saved to `<images_dir>/detections/` — originals are never modified.
 By default, full metadata transfer requires ExifTool when an output image is actually being saved.
 ExifTool lookup order is: explicit `--exiftool`, then `PATH`, then repo-local `./exiftool/` (`exiftool.exe` / `exiftool(-k).exe`).
-If ExifTool is missing at save time, the script exits with guidance to download it into `./exiftool/` or pass `--exiftool`.
+If ExifTool is missing at save time, the script exits with guidance to download it from [https://exiftool.org/](https://exiftool.org/) into `./exiftool/` or pass `--exiftool`.
 Use `--allow-missing-exiftool` only if you accept limited Pillow-only metadata copy.
 
 Supported formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
@@ -347,7 +347,7 @@ Supported formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
 Use `_Run_exiftool.bat` to inspect metadata for a single image and save full output to:
 `./exiftool/outputs/`.
 
-The helper expects ExifTool files in `./exiftool/`. If that directory is missing, the batch script exits with instructions to download ExifTool and place it there.
+The helper expects ExifTool files in `./exiftool/`. If that directory is missing, the batch script exits with instructions to download ExifTool from [https://exiftool.org/](https://exiftool.org/) and place it there.
 
 ---
 

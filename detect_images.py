@@ -40,6 +40,7 @@ DEFAULT_EXIFTOOL_CANDIDATES = (
     DEFAULT_EXIFTOOL_DIR / "exiftool(-k).exe",
     DEFAULT_EXIFTOOL_DIR / "exiftool",
 )
+EXIFTOOL_DOWNLOAD_URL = "https://exiftool.org/"
 
 # Box and label style
 BOX_COLOR       = (0, 200, 0)      # green
@@ -272,10 +273,12 @@ def run(args):
                 if not DEFAULT_EXIFTOOL_DIR.exists():
                     print(f"        Default directory missing: {DEFAULT_EXIFTOOL_DIR}")
                     print("        Download exiftool and put it in this directory,")
+                    print(f"        URL: {EXIFTOOL_DOWNLOAD_URL}")
                     print("        or pass --exiftool /path/to/exiftool(.exe).")
                 else:
                     print(f"        exiftool not found in default directory: {DEFAULT_EXIFTOOL_DIR}")
                     print("        Download exiftool and place exiftool.exe there,")
+                    print(f"        URL: {EXIFTOOL_DOWNLOAD_URL}")
                     print("        or pass --exiftool /path/to/exiftool(.exe).")
                 print("        To bypass (limited metadata copy), use --allow-missing-exiftool.")
                 sys.exit(1)
