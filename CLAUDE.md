@@ -14,6 +14,7 @@ A YOLOv8 toolkit for building datasets, training detectors, and running inferenc
 | `voc_to_yolo.py` | Convert existing Pascal VOC XML annotations to YOLOv8 format |
 | `train_detector.py` | Train YOLOv8 detector with auto-configured hardware-aware hyperparameters |
 | `detect_images.py` | Run trained model on image folder, draw boxes, export JSON detections |
+| `ortho_tag_sidecar.py` | Pillow GPS → ExifTool `-G1`-style metadata helpers; CLI verifies one sidecar JSON for B3DM |
 | `_Run_exiftool.bat` | Windows helper to dump full image metadata to `./exiftool/outputs/` |
 
 ## Common Commands
@@ -64,5 +65,6 @@ All scripts share common patterns:
 - `train_detector.py`: imgsz only raised if batch stays >= 8; capped to native image resolution (no upscaling)
 - `detect_images.py`: JSON export includes both pixel coords (x1,y1,x2,y2) and YOLO normalized (cx,cy,bw,bh); labels.txt maps class_id to class_name
 - `detect_images.py`: annotated-image save path uses Pillow metadata transfer plus ExifTool (`--exiftool`, PATH, or repo-local `./exiftool/`) for full metadata groups; save-time fallback can be enabled with `--allow-missing-exiftool`
+- `ortho_tag_sidecar.py`: `merge_pillow_gps_exif_into_metadata()` fills `GPS:*` / basic `ExifIFD:*` when JSON lacks ExifTool-style keys; `--verify-b3dm` in `detect_images.py` uses the same checks as `python ortho_tag_sidecar.py <sidecar.json>`
 - All scripts create auto-versioned output dirs (`dataset` → `dataset_v2` → `dataset_v3`) when target exists and is non-empty
 - Type checker false positive on `from ultralytics import YOLO` — already suppressed with `# type: ignore[union-attr]`

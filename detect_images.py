@@ -25,11 +25,16 @@ import json
 import shutil
 import subprocess
 import sys
-from typing import Optional
+from typing import Dict, Optional, Tuple
 import cv2
 from pathlib import Path
 from ultralytics import YOLO  # type: ignore[union-attr]
 from PIL import Image, ExifTags
+
+from ortho_tag_sidecar import (
+    merge_pillow_gps_exif_into_metadata,
+    verify_sidecar_json_file,
+)
 
 
 # -- Config --------------------------------------------------------------------
@@ -112,6 +117,10 @@ def parse_args():
         "--allow-missing-exiftool", action="store_true", default=False,
         help="Allow run without exiftool (metadata preservation will be limited)"
     )
+    parser.add_argument(
+        "--verify-b3dm", action="store_true", default=False,
+        help="After each JSON export, verify Ortho-Tag georeference keys; exit 1 if any sidecar fails"
+    )
 
     return parser.parse_args()
 
@@ -144,8 +153,11 @@ def export_json(img_array, results, class_names):
     return items
 
 
-def extract_image_metadata(img_path: Path, exiftool_cmd):
-    """Extract full metadata via exiftool, with Pillow EXIF fallback."""
+def extract_image_metadata(img_path: Path, exiftool_cmd) -> Tuple[Dict, str]:
+    """Extract full metadata via exiftool, with Pillow EXIF fallback.
+
+    Returns (metadata_dict, source) where source is ``exiftool``, ``pillow``, or ``none``.
+    """
     if exiftool_cmd:
         cmd = exiftool_cmd + ["-j", "-a", "-u", "-G1", str(img_path)]
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
@@ -153,7 +165,7 @@ def extract_image_metadata(img_path: Path, exiftool_cmd):
             try:
                 payload = json.loads(proc.stdout)
                 if isinstance(payload, list) and payload and isinstance(payload[0], dict):
-                    return payload[0]
+                    return payload[0], "exiftool"
             except json.JSONDecodeError:
                 pass
 
@@ -162,13 +174,13 @@ def extract_image_metadata(img_path: Path, exiftool_cmd):
         with Image.open(img_path) as im:
             exif = im.getexif()
             if not exif:
-                return {}
+                return {}, "none"
             return {
                 ExifTags.TAGS.get(tag_id, str(tag_id)): value
                 for tag_id, value in exif.items()
-            }
+            }, "pillow"
     except Exception:
-        return {}
+        return {}, "none"
 
 
 def draw_detections(image, results, class_names):
@@ -284,6 +296,8 @@ def run(args):
     class_names = model.names
     exiftool_cmd, exiftool_resolve_reason = resolve_exiftool_command(args.exiftool)
     exiftool_warned = False
+    nonexiftool_json_metadata_warned = False
+    b3dm_verify_failed = False
 
     # Process images
     total_detections = 0
@@ -306,7 +320,15 @@ def run(args):
         # Export JSON if requested
         if args.export_json and n_det > 0:
             items = export_json(image, results, class_names)
-            metadata = extract_image_metadata(img_path, exiftool_cmd)
+            metadata, meta_src = extract_image_metadata(img_path, exiftool_cmd)
+            metadata = merge_pillow_gps_exif_into_metadata(metadata, img_path)
+            if meta_src != "exiftool" and not nonexiftool_json_metadata_warned:
+                print(
+                    "  [WARN] Sidecar JSON metadata was not produced by exiftool (Pillow fallback or empty EXIF). "
+                    "Ortho-Tag B3DM expects exiftool -G1 keys (e.g. XMP-drone-dji:* for yaw/pitch/altitude). "
+                    "GPS/FocalLength are merged from EXIF when possible; install exiftool or use --exiftool for full DJI pose."
+                )
+                nonexiftool_json_metadata_warned = True
             h, w = image.shape[:2]
             payload = {
                 "image": {
@@ -322,6 +344,11 @@ def run(args):
             with open(json_path, "w") as f:
                 json.dump(payload, f, indent=2, default=str)
             print(f"  [{i}/{len(image_paths)}] {img_path.name}  ->  {json_path.name}")
+            if args.verify_b3dm:
+                ok_geo, miss_c, _miss_r = verify_sidecar_json_file(json_path)
+                if not ok_geo:
+                    b3dm_verify_failed = True
+                    print(f"  [WARN] --verify-b3dm failed for {json_path.name}: {', '.join(miss_c)}")
 
         # Save logic – preserve EXIF metadata when writing annotated images
         def save_image_with_exif(src_path: Path, img_array, dest_path: Path):
@@ -440,6 +467,10 @@ def run(args):
             for cid, cname in sorted(class_names.items(), key=lambda x: x[0]):
                 f.write(f"{cid}\t{cname}\n")
         print(f"\n  {output_dir}/labels.txt  ({len(class_names)} class(es))")
+
+    if args.verify_b3dm and b3dm_verify_failed:
+        print("[ERROR] --verify-b3dm: one or more sidecars lack latitude/longitude in exiftool-style keys.")
+        sys.exit(1)
 
     # Summary
     print(f"\n{'='*60}")

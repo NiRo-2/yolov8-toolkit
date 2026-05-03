@@ -14,6 +14,7 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 | `voc_to_yolo.py` | Convert an existing Pascal VOC annotated dataset to YOLOv8 format |
 | `train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
 | `detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
+| `ortho_tag_sidecar.py` | Verify detection JSON sidecars for Ortho-Tag / B3DM georeference keys (`Usage:` one `.json` path) |
 
 ---
 
@@ -338,9 +339,27 @@ JSON format:
 }
 ```
 
-- `metadata` — full ExifTool metadata when available (`-j -a -u -G1` output), with Pillow EXIF fallback
+- `metadata` — full ExifTool metadata when available (`-j -a -u -G1` output), with Pillow EXIF fallback. When ExifTool is not used, `ortho_tag_sidecar.merge_pillow_gps_exif_into_metadata` adds `GPS:*` and basic `ExifIFD:*` keys from Pillow so Ortho-Tag can read geolocation and focal length; DJI XMP (`XMP-drone-dji:*` yaw, pitch, relative altitude) still requires ExifTool on the image.
 - `detections[*].pixel` — absolute (x1, y1, x2, y2) in image coordinates
 - `detections[*].yolo` — normalized (cx, cy, bw, bh) / (W, H) for YOLO training/export
+
+### Ortho-Tag / B3DM (detection sidecars)
+
+Ortho-Tag B3DM (`detect_to_3d`) expects `metadata` keys in **ExifTool `-G1` form** (for example `GPS:GPSLatitude`, `XMP-drone-dji:FlightYawDegree`, `ExifIFD:FocalLength`). Export with ExifTool available (PATH, `--exiftool`, or bundled `./exiftool/`) so sidecar JSON matches that layout.
+
+After export, confirm georeference fields on a sample file:
+
+```bash
+python ortho_tag_sidecar.py path/to/detections/some_image.json
+```
+
+Exit code `0` means latitude and longitude are present in the expected keys; the script also lists recommended fields (altitude, heading, pitch, focal length) that often come from DJI XMP via ExifTool.
+
+Run detection with strict verification (fails the run if any written sidecar lacks lat/lon):
+
+```bash
+python detect_images.py --images ... --model ... --verify-b3dm
+```
 
 ### All arguments
 
@@ -354,6 +373,7 @@ JSON format:
 | `--no-export-annotated-images` | `False` | Disable annotated image save and write JSON-only outputs |
 | `--exiftool` | auto | Optional path to ExifTool executable for full metadata transfer |
 | `--allow-missing-exiftool` | `False` | Allow saving with Pillow-only metadata copy when ExifTool is unavailable |
+| `--verify-b3dm` | `False` | After each JSON sidecar write, verify Ortho-Tag georeference keys; exit `1` if any file fails |
 
 Annotated images are saved to `<images_dir>/detections/` when enabled — originals are never modified.
 By default, full metadata transfer requires ExifTool when an output image is actually being saved.
