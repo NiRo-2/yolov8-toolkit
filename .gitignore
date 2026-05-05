@@ -229,3 +229,9 @@ exiftool/
 # Dataset files — not part of the code
 *.yaml
 !requirements*.txt
+
+# Remapped dataset outputs (common local naming)
+*_remap/
+*_remapped/
+*_merged/
+*_renamed/

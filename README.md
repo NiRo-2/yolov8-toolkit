@@ -12,6 +12,7 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 |---|---|
 | `vlm_yolo_prep.py` | Build a labelled YOLOv8 dataset from raw photos using a local VLM — no manual annotation needed |
 | `voc_to_yolo.py` | Convert an existing Pascal VOC annotated dataset to YOLOv8 format |
+| `remap_yolo_labels.py` | Copy an existing YOLO dataset to a new location and remap/merge class labels |
 | `train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
 | `detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
 | `ortho_tag_sidecar.py` | Verify detection JSON sidecars for Ortho-Tag / B3DM georeference keys (`Usage:` one `.json` path) |
@@ -192,6 +193,44 @@ python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset \
 # With test split
 python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset --enable-test
 ```
+
+---
+
+## Step 1c — Remap / Merge Existing YOLO Labels (`remap_yolo_labels.py`)
+
+Use this when you already have a YOLO dataset and want to:
+- merge multiple classes into one
+- merge only selected classes
+- rename one or more classes
+
+The script copies your entire input dataset tree into a new output folder, preserving structure as-is (`train`, `val`, optional `test`, images, labels, and extra files/folders). It then updates only label class IDs and `data.yaml` class names/count.
+
+### Basic usage
+```bash
+python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_v2 --map bolt_a:Bolt bolt_b:Bolt
+```
+
+### Examples
+```bash
+# Merge all classes to one
+python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_merged \
+    --map bolt_a:Bolt bolt_b:Bolt bolt_c:Bolt vague:Bolt
+
+# Merge selected classes only (others stay unchanged)
+python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_partial \
+    --map bolt_a:Bolt bolt_b:Bolt
+
+# Rename only one class
+python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_renamed \
+    --map vague:uncertain
+```
+
+### Windows batch helper
+
+You can also run `_Run_remap_yolo_labels.bat` and enter:
+- input dataset path
+- output dataset path
+- mapping pairs (e.g. `bolt_a:Bolt bolt_b:Bolt`)
 
 ---
 
