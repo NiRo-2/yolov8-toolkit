@@ -25,6 +25,9 @@ flat under <images_dir>/detections/. Files in subfolders are renamed by
 prepending the relative subpath joined with underscores
 (e.g. sub/a/foo.jpg -> detections/sub_a_foo.jpg) to avoid collisions. The
 detections/ output directory itself is always excluded from the scan.
+JSON sidecars follow the same flattened naming convention: `image.file_name`
+stores the flattened output image name, while `image.source_path` keeps the
+original input path.
 
 By default the script batches inference across multiple images per GPU call
 and runs post-inference I/O (sidecar JSON export, ExifTool metadata extract /
@@ -556,7 +559,7 @@ def run(args):
             h, w = image.shape[:2]
             payload = {
                 "image": {
-                    "file_name": img_path.name,
+                    "file_name": flat_name,
                     "source_path": str(img_path),
                     "width": w,
                     "height": h,
