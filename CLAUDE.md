@@ -39,7 +39,12 @@ python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset
 **Remap / merge datasets:**
 ```bash
 python remap_yolo_labels.py --input C:/data/a --input C:/data/b --output C:/data/merged --map 0:bolt_a:Bolt --map 1:rusty_screw:Screw
+
+# --input is repeatable/dynamic; pass as many as needed
+python remap_yolo_labels.py --input C:/data/d1 --input C:/data/d2 --input C:/data/d3 --input C:/data/d4 --input C:/data/d5 --input C:/data/d6 --input C:/data/d7 --input C:/data/d8 --input C:/data/d9 --input C:/data/d10 --output C:/data/merged_many --map 0:bolt_a:Bolt --map 9:rusty_screw:Screw
 ```
+
+`--map INDEX:OLD:NEW` indices follow input order (first `--input` is index 0).
 
 **Train:**
 ```bash

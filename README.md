@@ -238,13 +238,23 @@ python remap_yolo_labels.py \
     --input C:/data/c \
     --output C:/data/merged \
     --map 2:vague:Screw
+
+# Merge many datasets (10 shown; repeat --input as needed)
+python remap_yolo_labels.py \
+    --input C:/data/d1 --input C:/data/d2 --input C:/data/d3 --input C:/data/d4 --input C:/data/d5 \
+    --input C:/data/d6 --input C:/data/d7 --input C:/data/d8 --input C:/data/d9 --input C:/data/d10 \
+    --output C:/data/merged_many \
+    --map 0:bolt_a:Bolt --map 9:rusty_screw:Screw
 ```
+
+`--input` is repeatable and dynamic (no script-level hard limit): pass as many `--input` flags as needed.
+`--map INDEX:OLD:NEW` uses zero-based input order (`first --input = 0`, `second = 1`, ..., `tenth = 9`).
 
 ### Windows batch helper
 
 Use `_Run_remap_yolo_labels_template.bat`:
 - copy it to `_Run_remap_yolo_labels_personal.bat`
-- edit `INPUT_DATASET_1` (required), optional `INPUT_DATASET_2/3`, `OUTPUT_DATASET`, and `MAP_ARGS`
+- edit `INPUT_DATASET_1` (required), optional `INPUT_DATASET_2` through `INPUT_DATASET_10`, `OUTPUT_DATASET`, and `MAP_ARGS`
 - run your personal copy
 
 `*_personal.bat` is ignored by git in this repo.

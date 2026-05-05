@@ -54,6 +54,18 @@ examples:
   python remap_yolo_labels.py --input C:/data/a --input C:/data/b --input C:/data/c \\
       --output C:/data/merged \\
       --map 0:vague:Screw --map 2:bolt_c:Bolt
+
+  # Merge many datasets (10 shown; repeat --input as needed)
+  python remap_yolo_labels.py \\
+      --input C:/data/d1 --input C:/data/d2 --input C:/data/d3 --input C:/data/d4 --input C:/data/d5 \\
+      --input C:/data/d6 --input C:/data/d7 --input C:/data/d8 --input C:/data/d9 --input C:/data/d10 \\
+      --output C:/data/merged_many \\
+      --map 0:bolt_a:Bolt --map 9:rusty_screw:Screw
+
+Notes:
+  - --input is repeatable with no script-level hard limit.
+  - --map uses zero-based input index order:
+      first --input -> index 0, second -> index 1, ... tenth -> index 9
         """,
     )
     parser.add_argument(
@@ -61,7 +73,10 @@ examples:
         action="append",
         required=True,
         metavar="DIR",
-        help="Input YOLO dataset root (repeatable). Example: --input A --input B",
+        help=(
+            "Input YOLO dataset root (repeatable, dynamic count). "
+            "Use as many --input flags as needed: --input A --input B --input C ..."
+        ),
     )
     parser.add_argument("--output", "-o", required=True, metavar="DIR",
                         help="Output dataset root (must not already exist).")
