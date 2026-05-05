@@ -17,13 +17,15 @@ if not exist "%scriptPath%" (
 REM ======================================================================
 REM USER CONFIG - EDIT THESE VALUES
 REM ======================================================================
-set "INPUT_DATASET=c:\inputdir"
-set "OUTPUT_DATASET=c:\outputdir"
-set "MAP_PAIRS=bolt_a:Bolt bolt_b:Bolt bolt_c:Bolt vague:Bolt"
+set "INPUT_DATASET_1=C:\data\dataset_a"
+set "INPUT_DATASET_2=C:\data\dataset_b"
+set "INPUT_DATASET_3="
+set "OUTPUT_DATASET=C:\data\dataset_merged"
+set "MAP_ARGS=--map 0:bolt_a:Bolt --map 0:bolt_b:Bolt --map 1:rusty_screw:Screw"
 REM ======================================================================
 
-if "%INPUT_DATASET%"=="" (
-    echo ERROR: INPUT_DATASET cannot be empty.
+if "%INPUT_DATASET_1%"=="" (
+    echo ERROR: INPUT_DATASET_1 cannot be empty.
     pause
     exit /b 1
 )
@@ -32,19 +34,22 @@ if "%OUTPUT_DATASET%"=="" (
     pause
     exit /b 1
 )
-if "%MAP_PAIRS%"=="" (
-    echo ERROR: MAP_PAIRS cannot be empty.
-    pause
-    exit /b 1
-)
 
 echo Running remap with:
-echo   Input : "%INPUT_DATASET%"
-echo   Output: "%OUTPUT_DATASET%"
-echo   Map   : %MAP_PAIRS%
+echo   Input[0]: "%INPUT_DATASET_1%"
+if not "%INPUT_DATASET_2%"=="" echo   Input[1]: "%INPUT_DATASET_2%"
+if not "%INPUT_DATASET_3%"=="" echo   Input[2]: "%INPUT_DATASET_3%"
+echo   Output  : "%OUTPUT_DATASET%"
+if not "%MAP_ARGS%"=="" echo   Map args : %MAP_ARGS%
 echo.
 
-python "%scriptPath%" --input "%INPUT_DATASET%" --output "%OUTPUT_DATASET%" --map %MAP_PAIRS%
+set "cmd=python "%scriptPath%" --input "%INPUT_DATASET_1%""
+if not "%INPUT_DATASET_2%"=="" set "cmd=%cmd% --input "%INPUT_DATASET_2%""
+if not "%INPUT_DATASET_3%"=="" set "cmd=%cmd% --input "%INPUT_DATASET_3%""
+set "cmd=%cmd% --output "%OUTPUT_DATASET%""
+if not "%MAP_ARGS%"=="" set "cmd=%cmd% %MAP_ARGS%"
+
+call %cmd%
 set "exitCode=%ERRORLEVEL%"
 
 echo.

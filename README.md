@@ -196,40 +196,55 @@ python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset --enable-test
 
 ---
 
-## Step 1c — Remap / Merge Existing YOLO Labels (`remap_yolo_labels.py`)
+## Step 1c — Remap / Merge One or More YOLO Datasets (`remap_yolo_labels.py`)
 
-Use this when you already have a YOLO dataset and want to:
+Use this when you already have one or more YOLO datasets and want to:
 - merge multiple classes into one
 - merge only selected classes
 - rename one or more classes
+- merge multiple datasets into one output dataset
 
-The script copies your entire input dataset tree into a new output folder, preserving structure as-is (`train`, `val`, optional `test`, images, labels, and extra files/folders). It then updates only label class IDs and `data.yaml` class names/count.
+The script treats all inputs as read-only and writes only to a new output folder:
+- first input is copied as the base tree
+- labels are remapped by final class names
+- additional inputs are merged by split (`train`/`val`/`test`)
+- filename collisions are preserved by renaming incoming files with source suffixes
+- final `data.yaml` is updated with merged `names` and `nc`
 
 ### Basic usage
 ```bash
-python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_v2 --map bolt_a:Bolt bolt_b:Bolt
+python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_v2 --map 0:bolt_a:Bolt --map 0:bolt_b:Bolt
 ```
 
 ### Examples
 ```bash
-# Merge all classes to one
+# One dataset: merge selected classes
 python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_merged \
-    --map bolt_a:Bolt bolt_b:Bolt bolt_c:Bolt vague:Bolt
+    --map 0:bolt_a:Bolt --map 0:bolt_b:Bolt
 
-# Merge selected classes only (others stay unchanged)
-python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_partial \
-    --map bolt_a:Bolt bolt_b:Bolt
+# Merge two datasets and align names to shared IDs
+python remap_yolo_labels.py \
+    --input C:/data/yolo_a \
+    --input C:/data/yolo_b \
+    --output C:/data/yolo_merged \
+    --map 0:bolt_a:Bolt \
+    --map 0:bolt_b:Bolt \
+    --map 1:rusty_screw:Screw
 
-# Rename only one class
-python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_renamed \
-    --map vague:uncertain
+# Merge three datasets
+python remap_yolo_labels.py \
+    --input C:/data/a \
+    --input C:/data/b \
+    --input C:/data/c \
+    --output C:/data/merged \
+    --map 2:vague:Screw
 ```
 
 ### Windows batch helper
 
 Use `_Run_remap_yolo_labels_template.bat`:
 - copy it to `_Run_remap_yolo_labels_personal.bat`
-- edit the three variables (`INPUT_DATASET`, `OUTPUT_DATASET`, `MAP_PAIRS`)
+- edit `INPUT_DATASET_1` (required), optional `INPUT_DATASET_2/3`, `OUTPUT_DATASET`, and `MAP_ARGS`
 - run your personal copy
 
 `*_personal.bat` is ignored by git in this repo.
