@@ -371,6 +371,45 @@ Saves `<images_dir>/detections/<name>.json` for images with detections, plus `la
 python detect_images.py --images /path/to/images --model best.pt --no-export-annotated-images
 ```
 
+### Subdirectory scanning (default ON)
+By default, `detect_images.py` walks all subdirectories of `--images` and processes every supported image it finds. The `<images_dir>/detections/` output folder is excluded from the scan so re-runs don't reprocess prior outputs.
+
+Outputs are kept flat under `<images_dir>/detections/`. Files inside subfolders are renamed by prefixing the relative subpath joined with underscores so basenames don't collide. Examples:
+
+- `images/foo.jpg`         -> `detections/foo.jpg` + `detections/foo.json`
+- `images/sub/foo.jpg`     -> `detections/sub_foo.jpg` + `detections/sub_foo.json`
+- `images/sub/a/foo.jpg`   -> `detections/sub_a_foo.jpg` + `detections/sub_a_foo.json`
+
+Disable with `--no-recursive` to scan only the top-level of `--images`:
+
+```bash
+python detect_images.py --images /path/to/images --model best.pt --no-recursive
+```
+
+### Performance: batched inference + threaded post-processing (default ON)
+
+The script runs two complementary speed-ups out of the box:
+
+1. **Batched GPU inference** (`--batch`) — a single `model([img1, img2, ...])` call per chunk, so the GPU processes multiple images in one forward pass instead of one at a time.
+2. **Threaded post-inference I/O** (`--workers`) — a `ThreadPoolExecutor` runs sidecar JSON export, ExifTool metadata extract / copy, and Pillow image saves in parallel while the main thread reads the next batch and runs the next inference call.
+
+Auto-sizing rules:
+
+- `--workers auto` -> `min(8, os.cpu_count())`. Pass an integer to override (e.g. `--workers 4`).
+- `--batch auto` -> `8` if CUDA is available, else `1`. Pass an integer to override (e.g. `--batch 16`).
+
+To disable both and get the previous fully sequential behaviour:
+
+```bash
+python detect_images.py --images /path/to/images --model best.pt --workers 1 --batch 1
+```
+
+Notes:
+
+- Inference itself stays single-threaded on the main thread (one GPU); threads accelerate the surrounding I/O work, which is dominated by ExifTool subprocess startup when annotated images are exported.
+- Per-image progress lines may print slightly out of order across worker threads, but the `[i/N]` index and final summary remain accurate.
+- Memory cost grows with batch size: roughly `batch * imgsz^2 * 3 * 4 bytes` on host plus a similar amount of GPU RAM. With `--batch 8` at imgsz 640 this is well under 100 MB.
+
 JSON format:
 ```json
 {
@@ -430,6 +469,10 @@ python detect_images.py --images ... --model ... --verify-b3dm
 | `--exiftool` | auto | Optional path to ExifTool executable for full metadata transfer |
 | `--allow-missing-exiftool` | `False` | Allow saving with Pillow-only metadata copy when ExifTool is unavailable |
 | `--verify-b3dm` | `False` | After each JSON sidecar write, verify Ortho-Tag georeference keys; exit `1` if any file fails |
+| `--recursive` | `True` | Walk subdirectories of `--images` for input files; outputs stay flat with relative-subpath prefixes |
+| `--no-recursive` | `False` | Only scan the top-level of `--images` |
+| `--workers` | `auto` | Worker threads for post-inference I/O (JSON + ExifTool + image save). `auto` = `min(8, os.cpu_count())`; pass an integer or `1` to disable threading |
+| `--batch` | `auto` | GPU inference batch size. `auto` = `8` if CUDA is available, else `1`; pass an integer or `1` to disable batching |
 
 Annotated images are saved to `<images_dir>/detections/` when enabled — originals are never modified.
 By default, full metadata transfer requires ExifTool when an output image is actually being saved.

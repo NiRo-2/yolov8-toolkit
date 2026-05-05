@@ -11,10 +11,16 @@ set imagesDirPath=_YOUR_IMAGES_DIR_HERE_
 set modelPath=_YOUR_MODEL_PATH_HERE_
 set confidence=0.3
 set exportAnnotatedImages=true
+set recursive=true
+set workers=auto
+set batch=auto
 
 set annotatedFlag=
 if /I "%exportAnnotatedImages%"=="false" set annotatedFlag=--no-export-annotated-images
 
-python detect_images.py --images %imagesDirPath% --model %modelPath% --conf %confidence% %annotatedFlag%
+set recursiveFlag=
+if /I "%recursive%"=="false" set recursiveFlag=--no-recursive
+
+python detect_images.py --images %imagesDirPath% --model %modelPath% --conf %confidence% %annotatedFlag% %recursiveFlag% --workers %workers% --batch %batch%
 
 pause
