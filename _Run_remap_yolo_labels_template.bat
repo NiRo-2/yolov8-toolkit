@@ -17,8 +17,8 @@ if not exist "%scriptPath%" (
 REM ======================================================================
 REM USER CONFIG - EDIT THESE VALUES
 REM ======================================================================
-set "INPUT_DATASET=D:\Nir\Datasets\ScrewIdentifier\DataSetsFromOtherPlaces\Bolts\Yolo8"
-set "OUTPUT_DATASET=D:\Nir\Datasets\ScrewIdentifier\DataSetsFromOtherPlaces\Bolts\Yolo8_remapped"
+set "INPUT_DATASET=c:\inputdir"
+set "OUTPUT_DATASET=c:\outputdir"
 set "MAP_PAIRS=bolt_a:Bolt bolt_b:Bolt bolt_c:Bolt vague:Bolt"
 REM ======================================================================
 
