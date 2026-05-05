@@ -227,10 +227,12 @@ python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_renamed \
 
 ### Windows batch helper
 
-You can also run `_Run_remap_yolo_labels.bat` and enter:
-- input dataset path
-- output dataset path
-- mapping pairs (e.g. `bolt_a:Bolt bolt_b:Bolt`)
+Use `_Run_remap_yolo_labels_template.bat`:
+- copy it to `_Run_remap_yolo_labels_personal.bat`
+- edit the three variables (`INPUT_DATASET`, `OUTPUT_DATASET`, `MAP_PAIRS`)
+- run your personal copy
+
+`*_personal.bat` is ignored by git in this repo.
 
 ---
 
