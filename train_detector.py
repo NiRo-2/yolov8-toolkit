@@ -23,7 +23,7 @@ Usage:
     --batch   override auto-calculated batch size
     --workers override auto-calculated worker count
     --imgsz   override auto-calculated image size in pixels
-    --epochs  number of training epochs (default: 300)
+    --epochs  number of training epochs (default: 600)
     --patience early stopping patience in epochs (default: 50)
     --device  0 for GPU, cpu for CPU (default: 0)
 
@@ -390,8 +390,8 @@ def parse_args():
         help="Override auto-selected model (e.g. yolov8x.pt)"
     )
     parser.add_argument(
-        "--epochs", type=int, default=300,
-        help="Number of training epochs (default: 300)"
+        "--epochs", type=int, default=600,
+        help="Number of training epochs (default: 600)"
     )
     parser.add_argument(
         "--imgsz", type=int, default=None,
