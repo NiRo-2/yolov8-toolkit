@@ -15,6 +15,7 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 | `remap_yolo_labels.py` | Copy an existing YOLO dataset to a new location and remap/merge class labels |
 | `train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
 | `detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
+| `yolov8_pt_to_xanylabeling_onnx.py` | Convert a detection `best.pt` to fixed-size ONNX + `config.yaml` for [X-AnyLabeling](https://github.com/CVHub520/X-AnyLabeling) **Load Custom Model** |
 | `ortho_tag_sidecar.py` | Verify detection JSON sidecars for Ortho-Tag / B3DM georeference keys (`Usage:` one `.json` path) |
 
 ---
@@ -37,8 +38,11 @@ vlm_yolo_prep.py            voc_to_yolo.py
                      v
           train_detector.py
                      |
-                     v
-          detect_images.py
+         +-----------+-----------+
+         |                       |
+         v                       v
+  yolov8_pt_to_xanylabeling_onnx.py   detect_images.py
+ (ONNX + config.yaml)                 (inference)
 ```
 
 ---
@@ -53,6 +57,7 @@ pip install ultralytics opencv-python psutil requests pillow pyyaml
 - PyTorch with CUDA (for GPU training) — install from [pytorch.org](https://pytorch.org/get-started/locally/)
 - [LM Studio](https://lmstudio.ai/) with a vision model loaded (for `vlm_yolo_prep.py` only)
 - Dataset in YOLOv8 format (e.g. exported from [Roboflow](https://roboflow.com))
+- For `yolov8_pt_to_xanylabeling_onnx.py`, Ultralytics ONNX export may require extra packages (e.g. `onnx`); follow any pip hint printed when you run the script
 
 ---
 
@@ -492,6 +497,46 @@ If ExifTool is missing at save time, the script exits with guidance to download 
 Use `--allow-missing-exiftool` only if you accept limited Pillow-only metadata copy.
 
 Supported formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
+
+---
+
+## Step 4 — YOLOv8 PT → X-AnyLabeling ONNX (`yolov8_pt_to_xanylabeling_onnx.py`)
+
+Use this after training when you want **[X-AnyLabeling](https://github.com/CVHub520/X-AnyLabeling)** auto-labelling with your own detector. The script only supports **YOLOv8 detection** checkpoints (`task=detect`); segmentation / pose / OBB weights are rejected.
+
+It writes a folder containing:
+
+- `<weights_stem>.onnx` — Ultralytics ONNX export with **fixed** input size (`dynamic=False`), as required by X-AnyLabeling
+- `config.yaml` — `type: yolov8` with `conf_threshold`, `iou_threshold`, `model_path`, `input_width` / `input_height`, and `classes` read from the checkpoint
+
+### Basic usage
+
+```bash
+python yolov8_pt_to_xanylabeling_onnx.py runs/detect/my_detector_v1/weights/best.pt
+```
+
+Default output directory: `<parent_of_pt>/<stem>_xanylabeling/` (for `.../weights/best.pt` → `.../weights/best_xanylabeling/`).
+
+### Load in X-AnyLabeling
+
+Open the app → **AI** menu → **Load Custom Model** (or the equivalent in your build) → select the generated `config.yaml`. See upstream [custom model docs](https://github.com/CVHub520/X-AnyLabeling/blob/main/docs/en/custom_model.md).
+
+### Optional flags
+
+| Argument | Default | Description |
+|---|---|---|
+| `weights` | required | Path to trained detection `.pt` |
+| `--output-dir` | `<pt_parent>/<stem>_xanylabeling` | Folder for ONNX + YAML |
+| `--imgsz` | from checkpoint, else `640` | Square export / config input size |
+| `--conf` | `0.25` | `conf_threshold` in YAML |
+| `--iou` | `0.45` | `iou_threshold` in YAML (IoU / NMS) |
+| `--name` | weights stem | `name` field in YAML |
+| `--display-name` | same as `--name` | `display_name` in YAML |
+| `--device` | ultralytics default | Export device: `cpu`, `0`, `cuda:0`, … |
+
+### Windows batch template
+
+Copy `_Run_yolov8_pt_to_xanylabeling_onnx_template.bat` to a personal file, set `weightsPath`, and optionally `extraArgs` (e.g. `--output-dir "D:\out" --imgsz 640 --device cpu`).
 
 ### ExifTool helper batch (Windows)
 
