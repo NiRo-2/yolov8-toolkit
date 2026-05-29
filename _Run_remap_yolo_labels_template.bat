@@ -1,4 +1,5 @@
 @echo off
+REM Remaps class names/IDs and merges one or more YOLO datasets into a new output tree.
 setlocal
 
 REM Copy this file to: _Run_remap_yolo_labels_personal.bat

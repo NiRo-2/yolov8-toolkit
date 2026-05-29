@@ -12,6 +12,7 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 |---|---|
 | `vlm_yolo_prep.py` | Build a labelled YOLOv8 dataset from raw photos using a local VLM — no manual annotation needed |
 | `voc_to_yolo.py` | Convert an existing Pascal VOC annotated dataset to YOLOv8 format |
+| `flat_yolo_split.py` | Split a flat folder of YOLO images + labels into train/val and write `data.yaml` |
 | `remap_yolo_labels.py` | Copy an existing YOLO dataset to a new location and remap/merge class labels |
 | `train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
 | `detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
@@ -23,13 +24,12 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 ## Full Pipeline
 
 ```
-[Raw photos]                    [Existing VOC dataset]
-     |                                   |
-     v                                   v
-vlm_yolo_prep.py            voc_to_yolo.py
-(auto-label with VLM)       (convert annotations)
-     |                                   |
-     +-----------------------------------+
+[Raw photos]        [VOC dataset]        [Flat YOLO labels folder]
+     |                   |                        |
+     v                   v                        v
+vlm_yolo_prep.py   voc_to_yolo.py          flat_yolo_split.py
+     |                   |                        |
+     +-------------------+------------------------+
                      |
                      v
           Labelled YOLOv8 dataset
@@ -201,7 +201,61 @@ python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset --enable-test
 
 ---
 
-## Step 1c — Remap / Merge One or More YOLO Datasets (`remap_yolo_labels.py`)
+## Step 1c — Split a Flat YOLO Folder (`flat_yolo_split.py`)
+
+Use this when you already have YOLO-format labels in a **single flat folder** (images and `.txt` files together, not yet split into `train/` / `val/`). The script reads `classes.txt` or `labels.txt`, validates that there are no anonymous or out-of-range class IDs, then copies files into the standard training layout.
+
+### Input layout
+
+```
+labels/
+  classes.txt       # one class per line (line index = class ID)
+  # OR labels.txt   # id<TAB>name per line (detect_images export style)
+  image1.jpg
+  image1.txt
+  image2.jpg
+  image2.txt
+```
+
+### Basic usage
+
+```bash
+python flat_yolo_split.py --input C:/data/labels --output C:/data/dataset
+```
+
+### Windows batch file
+
+Copy `_Run_flat_yolo_split_template.bat` to `_Run_flat_yolo_split_personal.bat`, set `INPUT_DIR` and `OUTPUT_DIR`, then run it. Personal batch files are gitignored (`*_personal.bat`).
+
+### All arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--input` | required | Flat folder with images, label `.txt` files, and `classes.txt` or `labels.txt` |
+| `--output` | required | Output dataset root (auto-versioned if not empty) |
+| `--train` | `0.70` | Train split ratio |
+| `--val` | `0.20` | Val split ratio when `--enable-test` is on |
+| `--seed` | `42` | Random seed for reproducible splits |
+| `--enable-test` | off | Create a test split in addition to train and val |
+
+### Validation (hard-fail before export)
+
+- Rejects ambiguous input if both `classes.txt` and `labels.txt` exist
+- Rejects anonymous class names (`unknown`, `anonymous`, etc.) and duplicate names
+- Rejects bbox lines with invalid class IDs or coordinates outside `[0, 1]`
+- Does not write `--output` until validation passes
+
+### Example
+
+```bash
+python flat_yolo_split.py ^
+    --input  "d:\Nir\Projects\ScrewIdentifier\v3\labels" ^
+    --output "d:\Nir\Projects\ScrewIdentifier\v3\yolo_dataset"
+```
+
+---
+
+## Step 1d — Remap / Merge One or More YOLO Datasets (`remap_yolo_labels.py`)
 
 Use this when you already have one or more YOLO datasets and want to:
 - merge multiple classes into one

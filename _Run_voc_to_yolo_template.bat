@@ -1,4 +1,5 @@
 @echo off
+REM Converts Pascal VOC XML + images to YOLOv8 train/val layout and data.yaml.
 :: Template for converting VOC XML annotations to YOLO format.
 :: Create a personal copy (e.g. _Run_voc_to_yolo_personal.bat) and fill in your own paths.
 ::

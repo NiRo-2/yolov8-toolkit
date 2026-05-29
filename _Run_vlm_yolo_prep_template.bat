@@ -1,4 +1,5 @@
 @echo off
+REM Auto-labels raw photos via local VLM (LM Studio) and builds a YOLOv8 dataset.
 :: Template for VLM-based dataset generation.
 :: Create a personal copy (e.g. _Run_vlm_yolo_prep_personal.bat) and fill in your own paths.
 ::

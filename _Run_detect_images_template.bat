@@ -1,4 +1,5 @@
 @echo off
+REM Runs a trained .pt model on a folder of images; saves detections and optional JSON.
 :: Template for running inference with a trained YOLO model.
 :: Create a personal copy (e.g. _Run_detect_images_personal.bat) and fill in your own paths.
 ::

@@ -1,4 +1,5 @@
 @echo off
+REM Dumps full image metadata via repo-local ExifTool to exiftool/outputs/.
 setlocal
 
 set "scriptDir=%~dp0"

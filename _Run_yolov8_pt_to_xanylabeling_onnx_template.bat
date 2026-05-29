@@ -1,4 +1,5 @@
 @echo off
+REM Exports detection .pt to ONNX + X-AnyLabeling config.yaml for Load Custom Model.
 :: Template: convert a YOLOv8 detection .pt to ONNX + X-AnyLabeling config.yaml.
 :: Copy to a personal file (e.g. _Run_yolov8_pt_to_xanylabeling_onnx_personal.bat) and set paths.
 ::

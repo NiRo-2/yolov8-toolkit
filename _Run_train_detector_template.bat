@@ -1,4 +1,5 @@
 @echo off
+REM Trains a YOLOv8 detector from data.yaml with hardware-aware hyperparameters.
 :: Template for training detector.
 :: Create a personal copy (e.g. _Run_train_detector_personal.bat) and fill in your own paths.
 ::
