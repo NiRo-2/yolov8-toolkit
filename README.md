@@ -386,7 +386,7 @@ The script detects your hardware and dataset size, then selects the best model, 
 | Train images | VRAM | Model | imgsz | Reason |
 |---|---|---|---|---|
 | < 1,000 | ≥ 16GB | yolov8m | 1280 | Small dataset — m avoids overfit |
-| 1,000–5,000 | ≥ 16GB | yolov8l | 1024 | l+1280 forces batch 4 — too noisy |
+| 1,000–5,000 | ≥ 16GB | yolov8l | 1024 | l+1280 fits batch 4; 1024 keeps imgsz/batch balance |
 | > 5,000 | ≥ 16GB | yolov8x | 1280 | Large dataset justifies x |
 | < 1,000 | ≥ 12GB | yolov8m | 1024 | Small dataset, safe imgsz |
 | 1,000–5,000 | ≥ 12GB | yolov8l | 1024 | VRAM limit, keep imgsz safe |
@@ -397,11 +397,11 @@ The script detects your hardware and dataset size, then selects the best model, 
 | any | < 8GB | yolov8m | 640 | Low VRAM, minimal safe config |
 | any | CPU | yolov8m | 640 | CPU fallback |
 
-**Key constraint:** imgsz is only raised when batch size stays ≥ 8. `1024px + batch 8` beats `1280px + batch 4`.
+**Key constraint:** imgsz is only raised when batch size stays ≥ 4. Fresh runs set `nbs=64` so YOLO gradient accumulation keeps the effective batch at 64 even when per-step batch is smaller. The `[Auto Config]` block prints `effective batch` when batch < 64.
 
 Batch size is calculated from VRAM × 85% safety margin ÷ VRAM-per-image estimate, clamped to powers of 2 (4, 8, 16, 32, 64). Worker count is calculated from CPU cores and RAM, capped at 8 for Windows stability.
 
-**Augmentation** (fresh runs only; not applied on `--resume`): `degrees=180`, `flipud=0.5`, `copy_paste=0.3`, `mixup=0.15`, `multi_scale=0.5`, `close_mosaic=60`, `cos_lr=True`. The script prints an `[Augmentation Config]` block before training starts.
+**Augmentation** (fresh runs only; not applied on `--resume`): `degrees=180`, `flipud=0.5`, `copy_paste=0.3`, `mixup=0.15`, `multi_scale=0.5` (when VRAM supports batch ≥ 4 under peak multi-scale sizing; otherwise `0.0`), `close_mosaic=60`, `cos_lr=True`, `nbs=64`. The script prints `[Auto Config]` (including effective batch when batch < 64) and an `[Augmentation Config]` block before training starts.
 
 You can always override any single value while letting the rest auto-calculate:
 ```bash
@@ -618,7 +618,7 @@ Both `vlm_yolo_prep.py` and `voc_to_yolo.py` generate this file automatically. [
 - **Poor detections from the VLM?** Lower `--confidence` to `0.5` and review the `preview/` folder. The VLM may need a more descriptive object name.
 - **VOC class names don't match what you want?** Use `--classes` to rename or reorder them when converting.
 - **mAP@0.50 < 0.80 after training?** Add more labelled images — dataset size is the biggest factor in accuracy.
-- **OOM crash during training?** Add `--batch 8` or `--batch 4` to override the auto-calculated batch size.
+- **OOM crash during training?** Add `--batch 8` or `--batch 4` to override the auto-calculated batch size. With `nbs=64`, batch 4 still yields an effective batch of 64 via gradient accumulation.
 - **PC crashed mid-training?** Run with `--resume` — picks up from the last saved epoch automatically.
 - **Specific variants not detected?** (e.g. rusted bolts, painted-over screws) Collect photos of those specific types and add them to the dataset.
 

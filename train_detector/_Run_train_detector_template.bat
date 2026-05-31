@@ -3,6 +3,10 @@ REM Trains a YOLOv8 detector from data.yaml with hardware-aware hyperparameters.
 :: Template for training detector.
 :: Create a personal copy (e.g. _Run_train_detector_personal.bat) and fill in your own paths.
 ::
+:: Auto-config selects model, imgsz, batch, and workers from hardware + dataset.
+:: Fresh runs use nbs=64 gradient accumulation (effective batch 64 when batch < 64).
+:: Optional overrides: append --model, --batch, --imgsz, --workers, etc. to the python line.
+::
 :: Required: data.yaml path and project name.
 :: Example personal file (gitignored):
 ::   set dataYamlPath=c:\indir\data.yaml

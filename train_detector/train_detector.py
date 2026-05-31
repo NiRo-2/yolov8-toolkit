@@ -264,15 +264,15 @@ def select_model_and_imgsz(image_count: int, vram_gb: float) -> tuple:
 
     Key constraints:
     1. imgsz never exceeds native image resolution — upscaling adds no detail
-    2. imgsz is only raised if batch stays >= 8
-       Batch < 8 causes noisy gradients — 1024px + batch 8 beats 1280px + batch 4
+    2. imgsz is only raised if batch stays >= 4 (acceptable when nbs=64 gradient
+       accumulation is active; effective batch remains 64 regardless of per-step batch)
 
     Decision table (before native resolution cap):
     ┌─────────────┬──────────┬────────────┬────────┬──────────────────────────────────────────┐
     │ Train imgs  │ VRAM     │ Model      │ imgsz  │ Reason                                   │
     ├─────────────┼──────────┼────────────┼────────┼──────────────────────────────────────────┤
     │ < 1,000     │ >= 16GB  │ yolov8m    │ 1280   │ m is light, 1280 fits, avoids overfit    │
-    │ 1,000-5,000 │ >= 16GB  │ yolov8l    │ 1024   │ l+1280 forces batch 4 -- too noisy       │
+    │ 1,000-5,000 │ >= 16GB  │ yolov8l    │ 1024   │ l+1280 fits batch 4; 1024 keeps balance  │
     │ > 5,000     │ >= 16GB  │ yolov8x    │ 1280   │ x+1280 fits at batch 8 with 16GB         │
     ├─────────────┼──────────┼────────────┼────────┼──────────────────────────────────────────┤
     │ < 1,000     │ >= 12GB  │ yolov8m    │ 1024   │ small dataset, safe imgsz                │
@@ -348,7 +348,14 @@ def calc_batch(vram_gb: float, model: str, imgsz: int, multi_scale: float = 0.0)
 
 
 def calc_augmentation_config(vram_gb: float, model: str, imgsz: int) -> dict:
-    multi_scale = 0.5 if calc_batch(vram_gb, model, imgsz, multi_scale=0.5) >= MIN_BATCH else 0.0
+    """Quality-first augmentation: enable multi_scale whenever VRAM sustains batch >= 4.
+
+    nbs=64 keeps gradient accumulation explicit so optimization stays stable regardless
+    of the actual per-step batch size (effective batch remains 64).
+    """
+    # batch >= 4 is enough for multi_scale; nbs=64 gradient accumulation
+    # compensates for smaller per-step batches (effective batch stays 64).
+    multi_scale = 0.5 if calc_batch(vram_gb, model, imgsz, multi_scale=0.5) >= 4 else 0.0
     return {
         "degrees": 180,
         "flipud": 0.5,
@@ -357,6 +364,7 @@ def calc_augmentation_config(vram_gb: float, model: str, imgsz: int) -> dict:
         "multi_scale": multi_scale,
         "close_mosaic": 60,
         "cos_lr": True,
+        "nbs": 64,
     }
 
 
@@ -422,6 +430,11 @@ def print_auto_config(config: dict, args):
     print(f"  model      : {config['model']}  ({model_src})")
     print(f"  imgsz      : {config['imgsz']}px  ({imgsz_src})")
     print(f"  batch      : {config['batch']}  ({batch_src})")
+    batch = config["batch"]
+    nbs = config["augmentation"]["nbs"]
+    if batch < 64:
+        effective = batch * ((nbs + batch - 1) // batch)  # ceil(nbs / batch)
+        print(f"  effective batch : {effective}  (gradient accumulation)")
     print(f"  workers    : {config['workers']}  ({worker_src})")
 
     aug = config["augmentation"]
