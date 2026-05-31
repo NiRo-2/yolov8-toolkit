@@ -7,7 +7,7 @@ AI -> ... -> Load Custom Model.
 Usage:
     python yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py path/to/best.pt
 
-    --output-dir   output folder (default: <parent_of_pt>/<stem>_xanylabeling)
+    --output-dir   output folder (default: <script_dir>/<stem>_xanylabeling)
     --imgsz        square export size (default: from checkpoint, else 640)
     --conf         conf_threshold in config.yaml (default: 0.25)
     --iou          iou_threshold in config.yaml (default: 0.45)
@@ -26,6 +26,9 @@ from typing import Any, Optional
 
 import yaml
 from ultralytics import YOLO  # type: ignore[union-attr]
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 def normalize_path(raw: str) -> Path:
@@ -113,7 +116,7 @@ def parse_args() -> argparse.Namespace:
         "--output-dir",
         type=str,
         default=None,
-        help="Output directory (default: <pt_parent>/<stem>_xanylabeling)",
+        help="Output directory (default: yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling)",
     )
     p.add_argument(
         "--imgsz",
@@ -183,7 +186,7 @@ def main() -> None:
     out_dir = (
         normalize_path(args.output_dir)
         if args.output_dir
-        else (weights.parent / f"{stem}_xanylabeling")
+        else (SCRIPT_DIR / f"{stem}_xanylabeling")
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 

@@ -63,13 +63,24 @@ python train_detector/train_detector.py --resume --name my_detector   # resume c
 
 **Detect:**
 ```bash
-python detect_images/detect_images.py --images /path/to/images --model runs/detect/my_detector/weights/best.pt --export-json
+python detect_images/detect_images.py --images /path/to/images --model train_detector/runs/detect/my_detector/weights/best.pt --export-json
 ```
 
 **X-AnyLabeling (PT → ONNX + config):**
 ```bash
-python yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py runs/detect/my_detector/weights/best.pt
+python yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py train_detector/runs/detect/my_detector/weights/best.pt
 ```
+
+## Local outputs (gitignored)
+
+| Script | Output location |
+|---|---|
+| `train_detector/train_detector.py` | `train_detector/runs/detect/<name>/` |
+| `detect_images/detect_images.py` | `detect_images/detections/<input_folder_name>/` |
+| `yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py` | `yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling/` |
+| `exiftool/_Run_exiftool.bat` | `exiftool/outputs/` |
+
+`.gitignore` also covers: `*_personal.bat`, legacy repo-root `runs/`, `exiftool/`, `*.pt`, `*.onnx`, `*.engine`, and external dataset `*.yaml` files. Dataset scripts write only to user `--output` paths.
 
 ## Architecture
 
@@ -94,14 +105,14 @@ All scripts share common patterns:
 ## Key Details
 
 - `vlm_yolo_prep.py`: MAX_INFERENCE_SIZE (line ~431) controls VLM input resolution — match to LM Studio context setting (4000 for 32k, 2048 for 16k, 1280 for 8k)
-- `train_detector.py`: imgsz only raised if batch stays >= 8; capped to native image resolution (no upscaling)
+- `train_detector/train_detector.py`: writes to `train_detector/runs/detect/<name>/`; default `--patience` 100; fresh-run augmentation: `degrees=180`, `flipud=0.5`, `copy_paste=0.3`, `mixup=0.15`, `multi_scale=0.5`, `close_mosaic=60`, `cos_lr=True` (not applied on `--resume`); imgsz only raised if batch stays >= 8; capped to native image resolution (no upscaling); uses `statistics.median()` for native resolution detection
 - `detect_images/detect_images.py`: JSON export includes both pixel coords (x1,y1,x2,y2) and YOLO normalized (cx,cy,bw,bh); labels.txt maps class_id to class_name
 - `detect_images/detect_images.py`: annotated-image save path uses Pillow metadata transfer plus ExifTool (`--exiftool`, PATH, or repo-local `./exiftool/`) for full metadata groups; save-time fallback can be enabled with `--allow-missing-exiftool`
-- `detect_images/detect_images.py`: subdirectory scanning is on by default (`--recursive`, disable with `--no-recursive`); outputs stay flat under `<images_dir>/detections/` with relative-subpath underscore prefixing on collisions (`sub/a/foo.jpg` → `detections/sub_a_foo.jpg`); the `detections/` output folder itself is always excluded from the scan
+- `detect_images/detect_images.py`: subdirectory scanning is on by default (`--recursive`, disable with `--no-recursive`); outputs stay flat under `detect_images/detections/<input_folder_name>/` with relative-subpath underscore prefixing on collisions (`sub/a/foo.jpg` → `sub_a_foo.jpg`)
 - `detect_images/detect_images.py`: parallel pipeline by default — `--batch` (default `auto = 8 if CUDA else 1`) batches GPU inference, and `--workers` (default `auto = min(8, os.cpu_count())`) runs post-inference I/O (JSON sidecar, ExifTool metadata extract / copy, Pillow image save) on a `ThreadPoolExecutor` while the main thread reads the next batch. Pass `--workers 1 --batch 1` to revert to fully sequential per-image processing. Inference itself stays single-threaded on one GPU; the speed-up comes from overlapping ExifTool subprocesses with the next batch's inference. Worker prints are serialized via a `threading.Lock` but may appear slightly out of input order.
 - `ortho_tag_sidecar/ortho_tag_sidecar.py`: `merge_pillow_gps_exif_into_metadata()` fills `GPS:*` / basic `ExifIFD:*` when JSON lacks ExifTool-style keys; `--verify-b3dm` in `detect_images.py` uses the same checks as `python ortho_tag_sidecar/ortho_tag_sidecar.py <sidecar.json>`
 - `remap_yolo_labels.py`: all input datasets are read-only; only `--output` is written. Final class IDs are aligned by final class names across all merged inputs.
-- `yolov8_pt_to_xanylabeling_onnx.py`: detection `.pt` only; exports fixed-size ONNX (`dynamic=False`) with `conf_threshold` / `iou_threshold` keys for X-AnyLabeling; default bundle directory is `<pt_parent>/<stem>_xanylabeling/`
+- `yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py`: detection `.pt` only; exports fixed-size ONNX (`dynamic=False`) with `conf_threshold` / `iou_threshold` keys for X-AnyLabeling; default bundle directory is `yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling/`
 - `flat_yolo_split.py`: requires `classes.txt` or `labels.txt` in `--input`; rejects both present; hard-fails on anonymous class names and invalid bbox lines before writing output
 - All scripts create auto-versioned output dirs (`dataset` → `dataset_v2` → `dataset_v3`) when target exists and is non-empty
 - Type checker false positive on `from ultralytics import YOLO` — already suppressed with `# type: ignore[union-attr]`

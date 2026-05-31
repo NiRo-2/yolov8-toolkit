@@ -21,10 +21,9 @@ Usage:
                   (default: auto = 8 if CUDA is available, else 1)
 
 When recursive scanning finds images in subfolders, outputs are still written
-flat under <images_dir>/detections/. Files in subfolders are renamed by
+flat under detect_images/detections/<input_folder_name>/. Files in subfolders are renamed by
 prepending the relative subpath joined with underscores
-(e.g. sub/a/foo.jpg -> detections/sub_a_foo.jpg) to avoid collisions. The
-detections/ output directory itself is always excluded from the scan.
+(e.g. sub/a/foo.jpg -> sub_a_foo.jpg) to avoid collisions.
 JSON sidecars follow the same flattened naming convention: `image.file_name`
 stores the flattened output image name, while `image.source_path` keeps the
 original input path.
@@ -38,9 +37,8 @@ batch size: roughly batch * imgsz^2 * 3 * 4 bytes on host plus a similar
 amount of GPU RAM.
 
 Output:
-    <images_dir>/detections/    <- annotated images saved here
-    <images_dir>/detections/    <- detection JSON files
-    <images_dir>/detections/labels.txt  <- class_id → class_name mapping
+    detect_images/detections/<input_folder_name>/    <- annotated images + JSON
+    detect_images/detections/<input_folder_name>/labels.txt  <- class_id → class_name mapping
 """
 
 import argparse
@@ -63,6 +61,7 @@ except Exception:
     torch = None  # type: ignore[assignment]
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_DIR = Path(__file__).resolve().parent
 _SIDECAR_DIR = _REPO_ROOT / "ortho_tag_sidecar"
 if str(_SIDECAR_DIR) not in sys.path:
     sys.path.insert(0, str(_SIDECAR_DIR))
@@ -373,12 +372,17 @@ def require_exiftool_before_run(args, exiftool_cmd, exiftool_resolve_reason) -> 
     sys.exit(1)
 
 
+def detection_output_dir(images_dir: Path) -> Path:
+    """Default output folder under this script's directory, one subfolder per input dir."""
+    return SCRIPT_DIR / "detections" / images_dir.name
+
+
 # -- Main ----------------------------------------------------------------------
 
 def run(args):
     images_dir = normalize_path(args.images)
     model_path = normalize_path(args.model)
-    output_dir = images_dir / "detections"
+    output_dir = detection_output_dir(images_dir)
 
     # Validate inputs
     if not images_dir.exists():
@@ -393,8 +397,7 @@ def run(args):
         print(f"[ERROR] Confidence must be between 0.0 and 1.0, got: {args.conf}")
         sys.exit(1)
 
-    # Collect images. Always exclude the detections/ output dir so re-runs
-    # don't re-detect prior outputs.
+    # Collect images.
     iterator = images_dir.rglob("*") if args.recursive else images_dir.iterdir()
     image_paths = []
     for p in iterator:
@@ -402,11 +405,6 @@ def run(args):
             continue
         if p.suffix.lower() not in SUPPORTED_EXTENSIONS:
             continue
-        try:
-            p.resolve().relative_to(output_dir)
-            continue
-        except ValueError:
-            pass
         image_paths.append(p)
     image_paths.sort()
 

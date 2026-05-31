@@ -213,18 +213,21 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# YOLOv8 training outputs
-runs/
+# Script-local generated outputs (see README "Local outputs")
+train_detector/runs/
+detect_images/detections/
+yolov8_pt_to_xanylabeling_onnx/*_xanylabeling/
 
-# Detection output (annotated images + JSON)
-detections/
+# Legacy repo-root training outputs (pre script-local layout)
+/runs/
 
-# Local exiftool binaries
+# Local exiftool binaries + metadata dumps (exiftool/outputs/)
 exiftool/
 
-# Model weights — too large for git (use GitHub Releases instead)
+# Model weights / engines / ONNX — too large for git
 *.pt
 *.engine
+*.onnx
 
 # Dataset files — not part of the code
 *.yaml

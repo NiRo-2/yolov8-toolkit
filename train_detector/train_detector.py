@@ -28,10 +28,10 @@ Usage:
     --device  0 for GPU, cpu for CPU (default: 0)
 
 Output:
-    runs/detect/<name>/weights/best.pt   <- use this for TensorRT export
-    runs/detect/<name>/weights/last.pt
-    runs/detect/<name>/results.png
-    runs/detect/<name>/confusion_matrix.png
+    train_detector/runs/detect/<name>/weights/best.pt   <- use this for TensorRT export
+    train_detector/runs/detect/<name>/weights/last.pt
+    train_detector/runs/detect/<name>/results.png
+    train_detector/runs/detect/<name>/confusion_matrix.png
 """
 
 import argparse
@@ -43,7 +43,8 @@ from pathlib import Path
 from ultralytics import YOLO
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_DIR = Path(__file__).resolve().parent
+RUNS_DIR = SCRIPT_DIR / "runs" / "detect"
 
 
 # -- Path Normalization --------------------------------------------------------
@@ -430,10 +431,10 @@ def parse_args():
 def find_last_checkpoint(name: str = None) -> Path:
     """
     Find last.pt to resume from.
-    - If --name given: looks in runs/detect/<name>/weights/last.pt
+    - If --name given: looks in train_detector/runs/detect/<name>/weights/last.pt
     - If no --name:    finds the most recently modified run folder automatically
     """
-    runs_dir = REPO_ROOT / "runs" / "detect"
+    runs_dir = RUNS_DIR
 
     if not runs_dir.exists():
         print(f"[ERROR] No runs directory found at: {runs_dir}")
@@ -595,7 +596,7 @@ def train(args):
         sys.exit(1)
 
     yaml_path  = normalize_path(args.input)
-    output_dir = REPO_ROOT / "runs" / "detect"
+    output_dir = RUNS_DIR
     run_name   = args.name if args.name else "detector_v1"
 
     validate_dataset(yaml_path)

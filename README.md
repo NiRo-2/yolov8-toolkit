@@ -59,6 +59,23 @@ pip install ultralytics opencv-python psutil requests pillow pyyaml
 - Dataset in YOLOv8 format (e.g. exported from [Roboflow](https://roboflow.com))
 - For `yolov8_pt_to_xanylabeling_onnx.py`, Ultralytics ONNX export may require extra packages (e.g. `onnx`); follow any pip hint printed when you run the script
 
+### Local outputs (gitignored)
+
+Scripts that write into the repo use **script-local folders** (not the repo root). These paths are in `.gitignore`:
+
+| Script | Default output location |
+|---|---|
+| `train_detector/train_detector.py` | `train_detector/runs/detect/<name>/` |
+| `detect_images/detect_images.py` | `detect_images/detections/<input_folder_name>/` |
+| `yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py` | `yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling/` |
+| `exiftool/_Run_exiftool.bat` | `exiftool/outputs/` (under gitignored `exiftool/`) |
+
+Also ignored globally: `*_personal.bat`, `*.pt`, `*.onnx`, `*.engine`, and dataset `data.yaml` files written outside these folders.
+
+Dataset-building scripts (`vlm_yolo_prep`, `voc_to_yolo`, `flat_yolo_split`, `remap_yolo_labels`) write only to paths you pass via `--output` (typically outside the repo).
+
+If you still have an old repo-root `runs/` folder from before this layout, move it to `train_detector/runs/` (or delete after copying).
+
 ---
 
 ## Step 1a — Build a Dataset from Raw Photos (`vlm_yolo_prep.py`)
@@ -358,7 +375,7 @@ python train_detector/train_detector.py --resume
 | `--batch` | auto | Override batch size |
 | `--workers` | auto | Override dataloader worker count |
 | `--epochs` | `300` | Max training epochs |
-| `--patience` | `50` | Early stopping patience |
+| `--patience` | `100` | Early stopping patience |
 | `--device` | `0` | `0` for GPU, `cpu` for CPU |
 
 ### Auto-configuration
@@ -383,6 +400,8 @@ The script detects your hardware and dataset size, then selects the best model, 
 
 Batch size is calculated from VRAM × 85% safety margin ÷ VRAM-per-image estimate, clamped to powers of 2 (4, 8, 16, 32, 64). Worker count is calculated from CPU cores and RAM, capped at 8 for Windows stability.
 
+**Augmentation** (fresh runs only; not applied on `--resume`): `degrees=180`, `flipud=0.5`, `copy_paste=0.3`, `mixup=0.15`, `multi_scale=0.5`, `close_mosaic=60`, `cos_lr=True`. The script prints an `[Augmentation Config]` block before training starts.
+
 You can always override any single value while letting the rest auto-calculate:
 ```bash
 python train_detector/train_detector.py --input data.yaml --name run1 --model yolov8x.pt
@@ -390,10 +409,10 @@ python train_detector/train_detector.py --input data.yaml --name run1 --model yo
 
 ### Output
 
-Training results are saved to `runs/detect/<name>/`:
+Training results are saved to `train_detector/runs/detect/<name>/`:
 
 ```
-runs/detect/my_detector_v1/
+train_detector/runs/detect/my_detector_v1/
 ├── weights/
 │   ├── best.pt      ← best model weights (use this)
 │   └── last.pt      ← last epoch checkpoint (used for resume)
@@ -420,7 +439,7 @@ Run a trained model over a folder of images:
 ```bash
 python detect_images/detect_images.py \
     --images /path/to/images \
-    --model  runs/detect/my_detector_v1/weights/best.pt
+    --model  train_detector/runs/detect/my_detector_v1/weights/best.pt
 ```
 
 ### With custom confidence threshold
@@ -433,7 +452,7 @@ python detect_images/detect_images.py --images /path/to/images --model best.pt -
 python detect_images/detect_images.py --images /path/to/images --model best.pt --export-json
 ```
 
-Saves `<images_dir>/detections/<name>.json` for images with detections, plus `labels.txt` mapping class IDs to names.
+Saves `detect_images/detections/<input_folder_name>/<name>.json` for images with detections, plus `labels.txt` mapping class IDs to names.
 
 ### JSON-only mode (no annotated image files)
 ```bash
@@ -441,13 +460,13 @@ python detect_images/detect_images.py --images /path/to/images --model best.pt -
 ```
 
 ### Subdirectory scanning (default ON)
-By default, `detect_images.py` walks all subdirectories of `--images` and processes every supported image it finds. The `<images_dir>/detections/` output folder is excluded from the scan so re-runs don't reprocess prior outputs.
+By default, `detect_images/detect_images.py` walks all subdirectories of `--images` and processes every supported image it finds.
 
-Outputs are kept flat under `<images_dir>/detections/`. Files inside subfolders are renamed by prefixing the relative subpath joined with underscores so basenames don't collide. Examples:
+Outputs are kept flat under `detect_images/detections/<input_folder_name>/`. Files inside subfolders are renamed by prefixing the relative subpath joined with underscores so basenames don't collide. Examples:
 
-- `images/foo.jpg`         -> `detections/foo.jpg` + `detections/foo.json`
-- `images/sub/foo.jpg`     -> `detections/sub_foo.jpg` + `detections/sub_foo.json`
-- `images/sub/a/foo.jpg`   -> `detections/sub_a_foo.jpg` + `detections/sub_a_foo.json`
+- `images/foo.jpg`         -> `detect_images/detections/images/foo.jpg` + `foo.json`
+- `images/sub/foo.jpg`     -> `detect_images/detections/images/sub_foo.jpg` + `sub_foo.json`
+- `images/sub/a/foo.jpg`   -> `detect_images/detections/images/sub_a_foo.jpg` + `sub_a_foo.json`
 
 Disable with `--no-recursive` to scan only the top-level of `--images`:
 
@@ -514,7 +533,7 @@ Ortho-Tag B3DM (`detect_to_3d`) expects `metadata` keys in **ExifTool `-G1` form
 After export, confirm georeference fields on a sample file:
 
 ```bash
-python ortho_tag_sidecar/ortho_tag_sidecar.py path/to/detections/some_image.json
+python ortho_tag_sidecar/ortho_tag_sidecar.py path/to/detect_images/detections/<folder>/some_image.json
 ```
 
 Exit code `0` means latitude and longitude are present in the expected keys; the script also lists recommended fields (altitude, heading, pitch, focal length) that often come from DJI XMP via ExifTool.
@@ -532,7 +551,7 @@ python detect_images/detect_images.py --images ... --model ... --verify-b3dm
 | `--images` | required | Path to folder of input images |
 | `--model` | required | Path to trained `.pt` model file |
 | `--conf` | `0.25` | Minimum confidence threshold (0.0–1.0) |
-| `--export-json` | `True` | Export detection JSON + labels.txt in detections/ |
+| `--export-json` | `True` | Export detection JSON + labels.txt in detect_images/detections/ |
 | `--export-annotated-images` | `True` | Save annotated detection images |
 | `--no-export-annotated-images` | `False` | Disable annotated image save and write JSON-only outputs |
 | `--exiftool` | auto | Optional path to ExifTool executable for full metadata transfer |
@@ -543,7 +562,7 @@ python detect_images/detect_images.py --images ... --model ... --verify-b3dm
 | `--workers` | `auto` | Worker threads for post-inference I/O (JSON + ExifTool + image save). `auto` = `min(8, os.cpu_count())`; pass an integer or `1` to disable threading |
 | `--batch` | `auto` | GPU inference batch size. `auto` = `8` if CUDA is available, else `1`; pass an integer or `1` to disable batching |
 
-Annotated images are saved to `<images_dir>/detections/` when enabled — originals are never modified.
+Annotated images are saved to `detect_images/detections/<input_folder_name>/` when enabled — originals are never modified.
 By default, full metadata transfer requires ExifTool when an output image is actually being saved.
 ExifTool lookup order is: explicit `--exiftool`, then `PATH`, then repo-local `./exiftool/` (`exiftool.exe` / `exiftool`), then bundled Perl runtime (`./exiftool/exiftool_files/perl.exe` + `exiftool.pl`).
 `exiftool(-k).exe` is intentionally ignored because it is interactive (`-- press ENTER --`) and can block batch runs.
@@ -566,10 +585,10 @@ It writes a folder containing:
 ### Basic usage
 
 ```bash
-python yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py runs/detect/my_detector_v1/weights/best.pt
+python yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py train_detector/runs/detect/my_detector_v1/weights/best.pt
 ```
 
-Default output directory: `<parent_of_pt>/<stem>_xanylabeling/` (for `.../weights/best.pt` → `.../weights/best_xanylabeling/`).
+Default output directory: `yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling/` (for `best.pt` → `yolov8_pt_to_xanylabeling_onnx/best_xanylabeling/`). Override with `--output-dir`.
 
 ### Load in X-AnyLabeling
 
@@ -580,7 +599,7 @@ Open the app → **AI** menu → **Load Custom Model** (or the equivalent in you
 | Argument | Default | Description |
 |---|---|---|
 | `weights` | required | Path to trained detection `.pt` |
-| `--output-dir` | `<pt_parent>/<stem>_xanylabeling` | Folder for ONNX + YAML |
+| `--output-dir` | `yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling` | Folder for ONNX + YAML |
 | `--imgsz` | from checkpoint, else `640` | Square export / config input size |
 | `--conf` | `0.25` | `conf_threshold` in YAML |
 | `--iou` | `0.45` | `iou_threshold` in YAML (IoU / NMS) |
