@@ -216,7 +216,6 @@ __marimo__/
 # Script-local generated outputs (see README "Local outputs")
 train_detector/runs/
 detect_images/detections/
-yolov8_pt_to_xanylabeling_onnx/*_xanylabeling/
 
 # Legacy repo-root training outputs (pre script-local layout)
 /runs/

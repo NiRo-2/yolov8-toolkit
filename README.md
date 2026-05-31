@@ -16,8 +16,9 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 | `remap_yolo_labels/remap_yolo_labels.py` | Copy an existing YOLO dataset to a new location and remap/merge class labels |
 | `train_detector/train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
 | `detect_images/detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
-| `yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py` | Convert a detection `best.pt` to fixed-size ONNX + `config.yaml` for [X-AnyLabeling](https://github.com/CVHub520/X-AnyLabeling) **Load Custom Model** |
 | `ortho_tag_sidecar/ortho_tag_sidecar.py` | Verify detection JSON sidecars for Ortho-Tag / B3DM georeference keys (`Usage:` one `.json` path) |
+
+**Related:** [X-AnyLabel-toolkit](https://github.com/NiRo-2/X-AnyLabel-toolkit) — PT → ONNX + X-AnyLabeling `config.yaml` export (`scripts/yolov8_pt_to_xanylabeling_onnx/`).
 
 ---
 
@@ -38,12 +39,12 @@ vlm_yolo_prep/     voc_to_yolo/          flat_yolo_split/
                      v
           train_detector/
                      |
-         +-----------+-----------+
-         |                       |
-         v                       v
-  yolov8_pt_to_xanylabeling_onnx/   detect_images/
- (ONNX + config.yaml)                 (inference)
+                     v
+              detect_images/
+                (inference)
 ```
+
+For X-AnyLabeling ONNX export, use the companion repo [X-AnyLabel-toolkit](https://github.com/NiRo-2/X-AnyLabel-toolkit).
 
 ---
 
@@ -57,7 +58,6 @@ pip install ultralytics opencv-python psutil requests pillow pyyaml
 - PyTorch with CUDA (for GPU training) — install from [pytorch.org](https://pytorch.org/get-started/locally/)
 - [LM Studio](https://lmstudio.ai/) with a vision model loaded (for `vlm_yolo_prep.py` only)
 - Dataset in YOLOv8 format (e.g. exported from [Roboflow](https://roboflow.com))
-- For `yolov8_pt_to_xanylabeling_onnx.py`, Ultralytics ONNX export may require extra packages (e.g. `onnx`); follow any pip hint printed when you run the script
 
 ### Local outputs (gitignored)
 
@@ -67,7 +67,6 @@ Scripts that write into the repo use **script-local folders** (not the repo root
 |---|---|
 | `train_detector/train_detector.py` | `train_detector/runs/detect/<name>/` |
 | `detect_images/detect_images.py` | `detect_images/detections/<input_folder_name>/` |
-| `yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py` | `yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling/` |
 | `exiftool/_Run_exiftool.bat` | `exiftool/outputs/` (under gitignored `exiftool/`) |
 
 Also ignored globally: `*_personal.bat`, `*.pt`, `*.onnx`, `*.engine`, and dataset `data.yaml` files written outside these folders.
@@ -573,50 +572,26 @@ Supported formats: `.jpg` `.jpeg` `.png` `.bmp` `.tiff` `.tif` `.webp`
 
 ---
 
-## Step 4 — YOLOv8 PT → X-AnyLabeling ONNX (`yolov8_pt_to_xanylabeling_onnx.py`)
-
-Use this after training when you want **[X-AnyLabeling](https://github.com/CVHub520/X-AnyLabeling)** auto-labelling with your own detector. The script only supports **YOLOv8 detection** checkpoints (`task=detect`); segmentation / pose / OBB weights are rejected.
-
-It writes a folder containing:
-
-- `<weights_stem>.onnx` — Ultralytics ONNX export with **fixed** input size (`dynamic=False`), as required by X-AnyLabeling
-- `config.yaml` — `type: yolov8` with `conf_threshold`, `iou_threshold`, `model_path`, `input_width` / `input_height`, and `classes` read from the checkpoint
-
-### Basic usage
-
-```bash
-python yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py train_detector/runs/detect/my_detector_v1/weights/best.pt
-```
-
-Default output directory: `yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling/` (for `best.pt` → `yolov8_pt_to_xanylabeling_onnx/best_xanylabeling/`). Override with `--output-dir`.
-
-### Load in X-AnyLabeling
-
-Open the app → **AI** menu → **Load Custom Model** (or the equivalent in your build) → select the generated `config.yaml`. See upstream [custom model docs](https://github.com/CVHub520/X-AnyLabeling/blob/main/docs/en/custom_model.md).
-
-### Optional flags
-
-| Argument | Default | Description |
-|---|---|---|
-| `weights` | required | Path to trained detection `.pt` |
-| `--output-dir` | `yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling` | Folder for ONNX + YAML |
-| `--imgsz` | from checkpoint, else `640` | Square export / config input size |
-| `--conf` | `0.25` | `conf_threshold` in YAML |
-| `--iou` | `0.45` | `iou_threshold` in YAML (IoU / NMS) |
-| `--name` | weights stem | `name` field in YAML |
-| `--display-name` | same as `--name` | `display_name` in YAML |
-| `--device` | ultralytics default | Export device: `cpu`, `0`, `cuda:0`, … |
-
-### Windows batch template
-
-Copy `yolov8_pt_to_xanylabeling_onnx/_Run_yolov8_pt_to_xanylabeling_onnx_template.bat` to `yolov8_pt_to_xanylabeling_onnx/_Run_yolov8_pt_to_xanylabeling_onnx_personal.bat` in the same folder, set `weightsPath`, and optionally `extraArgs` (e.g. `--output-dir "D:\out" --imgsz 640 --device cpu`).
-
-### ExifTool helper batch (Windows)
+## Step 4 — ExifTool helper batch (Windows)
 
 Use `exiftool/_Run_exiftool.bat` to inspect metadata for a single image and save full output to:
 `./exiftool/outputs/`.
 
 The helper expects ExifTool files in `./exiftool/`. If that directory is missing, the batch script exits with instructions to download ExifTool from [https://exiftool.org/](https://exiftool.org/) and place it there.
+
+---
+
+## Related — X-AnyLabel-toolkit
+
+The PT → ONNX + X-AnyLabeling export script lives in the separate [X-AnyLabel-toolkit](https://github.com/NiRo-2/X-AnyLabel-toolkit) repo (`scripts/yolov8_pt_to_xanylabeling_onnx/`). Use it after training when you want **[X-AnyLabeling](https://github.com/CVHub520/X-AnyLabeling)** auto-labelling with your own detector.
+
+```bash
+# From a clone of X-AnyLabel-toolkit
+python scripts/yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py \
+    /path/to/yolov8-toolkit/train_detector/runs/detect/my_detector_v1/weights/best.pt
+```
+
+Default output: `scripts/yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling/`. See that repo for flags, batch templates, and [Load Custom Model](https://github.com/CVHub520/X-AnyLabeling/blob/main/docs/en/custom_model.md) usage.
 
 ---
 
