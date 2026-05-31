@@ -215,6 +215,7 @@ __marimo__/
 
 # Script-local generated outputs (see README "Local outputs")
 train_detector/runs/
+train_detector/weights/
 detect_images/detections/
 
 # Legacy repo-root training outputs (pre script-local layout)

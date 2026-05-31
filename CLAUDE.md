@@ -75,7 +75,7 @@ python scripts/yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py 
 
 | Script | Output location |
 |---|---|
-| `train_detector/train_detector.py` | `train_detector/runs/detect/<name>/` |
+| `train_detector/train_detector.py` | `train_detector/runs/detect/<name>/`, `train_detector/weights/` |
 | `detect_images/detect_images.py` | `detect_images/detections/<input_folder_name>/` |
 | `exiftool/_Run_exiftool.bat` | `exiftool/outputs/` |
 
@@ -102,7 +102,7 @@ All scripts share common patterns:
 ## Key Details
 
 - `vlm_yolo_prep.py`: MAX_INFERENCE_SIZE (line ~431) controls VLM input resolution — match to LM Studio context setting (4000 for 32k, 2048 for 16k, 1280 for 8k)
-- `train_detector/train_detector.py`: writes to `train_detector/runs/detect/<name>/`; default `--patience` 100; fresh-run augmentation: `degrees=180`, `flipud=0.5`, `copy_paste=0.3`, `mixup=0.15`, `multi_scale=0.5`, `close_mosaic=60`, `cos_lr=True` (not applied on `--resume`); imgsz only raised if batch stays >= 8; capped to native image resolution (no upscaling); uses `statistics.median()` for native resolution detection
+- `train_detector/train_detector.py`: writes to `train_detector/runs/detect/<name>/`; caches pretrained backbones in `train_detector/weights/` via `resolve_pretrained_weights()`; default `--patience` 100; fresh-run augmentation: `degrees=180`, `flipud=0.5`, `copy_paste=0.3`, `mixup=0.15`, `multi_scale=0.5`, `close_mosaic=60`, `cos_lr=True` (not applied on `--resume`); imgsz only raised if batch stays >= 8; capped to native image resolution (no upscaling); uses `statistics.median()` for native resolution detection
 - `detect_images/detect_images.py`: JSON export includes both pixel coords (x1,y1,x2,y2) and YOLO normalized (cx,cy,bw,bh); labels.txt maps class_id to class_name
 - `detect_images/detect_images.py`: annotated-image save path uses Pillow metadata transfer plus ExifTool (`--exiftool`, PATH, or repo-local `./exiftool/`) for full metadata groups; save-time fallback can be enabled with `--allow-missing-exiftool`
 - `detect_images/detect_images.py`: subdirectory scanning is on by default (`--recursive`, disable with `--no-recursive`); outputs stay flat under `detect_images/detections/<input_folder_name>/` with relative-subpath underscore prefixing on collisions (`sub/a/foo.jpg` → `sub_a_foo.jpg`)

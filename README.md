@@ -65,7 +65,7 @@ Scripts that write into the repo use **script-local folders** (not the repo root
 
 | Script | Default output location |
 |---|---|
-| `train_detector/train_detector.py` | `train_detector/runs/detect/<name>/` |
+| `train_detector/train_detector.py` | `train_detector/runs/detect/<name>/`, `train_detector/weights/` (pretrained backbones) |
 | `detect_images/detect_images.py` | `detect_images/detections/<input_folder_name>/` |
 | `exiftool/_Run_exiftool.bat` | `exiftool/outputs/` (under gitignored `exiftool/`) |
 
@@ -74,6 +74,8 @@ Also ignored globally: `*_personal.bat`, `*.pt`, `*.onnx`, `*.engine`, and datas
 Dataset-building scripts (`vlm_yolo_prep`, `voc_to_yolo`, `flat_yolo_split`, `remap_yolo_labels`) write only to paths you pass via `--output` (typically outside the repo).
 
 If you still have an old repo-root `runs/` folder from before this layout, move it to `train_detector/runs/` (or delete after copying).
+
+Pretrained Ultralytics backbones (`yolov8m.pt`, etc.) belong in `train_detector/weights/` — not the repo root. `train_detector.py` resolves and downloads them there automatically.
 
 ---
 

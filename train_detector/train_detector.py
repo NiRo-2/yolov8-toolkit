@@ -28,6 +28,7 @@ Usage:
     --device  0 for GPU, cpu for CPU (default: 0)
 
 Output:
+    train_detector/weights/<model>.pt          <- Ultralytics pretrained backbones (cached)
     train_detector/runs/detect/<name>/weights/best.pt   <- use this for TensorRT export
     train_detector/runs/detect/<name>/weights/last.pt
     train_detector/runs/detect/<name>/results.png
@@ -45,6 +46,49 @@ from ultralytics import YOLO
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 RUNS_DIR = SCRIPT_DIR / "runs" / "detect"
+WEIGHTS_DIR = SCRIPT_DIR / "weights"
+
+
+def resolve_pretrained_weights(model: str) -> str:
+    """Resolve YOLO backbone name or path; cache under train_detector/weights/."""
+    WEIGHTS_DIR.mkdir(parents=True, exist_ok=True)
+
+    raw = model.strip().strip('"').strip("'")
+    path = Path(raw.replace("\\", "/"))
+
+    if path.is_file():
+        return str(path.resolve())
+
+    if len(path.parts) > 1:
+        resolved = normalize_path(raw)
+        if resolved.is_file():
+            return str(resolved)
+
+    name = path.name
+    local = WEIGHTS_DIR / name
+    if local.is_file():
+        return str(local)
+
+    from ultralytics.utils import SETTINGS
+    from ultralytics.utils.downloads import attempt_download_asset
+
+    old_weights_dir = SETTINGS.get("weights_dir")
+    SETTINGS.update({"weights_dir": str(WEIGHTS_DIR)})
+    try:
+        result = attempt_download_asset(name)
+    finally:
+        if old_weights_dir is not None:
+            SETTINGS.update({"weights_dir": old_weights_dir})
+
+    result_path = Path(result)
+    if result_path.is_file() and result_path.resolve() != local.resolve():
+        if local.is_file():
+            local.unlink()
+        result_path.replace(local)
+        return str(local)
+    if local.is_file():
+        return str(local)
+    return result
 
 
 # -- Path Normalization --------------------------------------------------------
@@ -614,7 +658,7 @@ def train(args):
     print(f"  output     : {output_dir / run_name}")
     print()
 
-    model = YOLO(config["model"])
+    model = YOLO(resolve_pretrained_weights(config["model"]))
 
     print(f"\n[Augmentation Config]")
     print(f"  degrees      : 180")
