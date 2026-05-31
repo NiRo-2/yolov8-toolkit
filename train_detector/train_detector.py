@@ -735,10 +735,19 @@ def train(args):
 
 # -- Post-Training Validation --------------------------------------------------
 
-def validate(best_pt: Path, yaml_path: Path, args):
-    print(f"\n[Validation] Running on best.pt...")
+def validate(yaml_path: Path, args):
+    run_name = args.name if args.name else "detector_v1"
+    run_dir = RUNS_DIR / run_name
+    best_pt = run_dir / "weights" / "best.pt"
+    run_args_yaml = run_dir / "args.yaml"
 
-    run_args_yaml = best_pt.parent.parent / "args.yaml"
+    print(f"\n[Validation] Running on best.pt...")
+    print(f"  Validating: {best_pt}")
+
+    if not best_pt.exists():
+        print(f"[ERROR] best.pt not found at: {best_pt}")
+        sys.exit(1)
+
     val_imgsz = 1024
     if run_args_yaml.exists():
         with open(run_args_yaml) as f:
@@ -773,8 +782,8 @@ if __name__ == "__main__":
     args = parse_args()
 
     if args.resume:
-        best_pt = resume_training(args)
+        resume_training(args)
     else:
-        best_pt = train(args)
+        train(args)
         yaml_path = normalize_path(args.input)
-        validate(best_pt, yaml_path, args)
+        validate(yaml_path, args)
