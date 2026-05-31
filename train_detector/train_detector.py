@@ -8,6 +8,7 @@ Usage:
 
     # Override any auto-calculated value
     python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector_v1 --model yolov8x.pt --batch 8
+    python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector_v1 --imgsz 1024
 
     # Resume a crashed/interrupted run
     python train_detector/train_detector.py --resume --name my_detector_v1
@@ -165,9 +166,8 @@ def detect_image_size(train_path: Path) -> int:
     """
     Sample images spread across the dataset to detect native resolution.
 
-    Returns the MINIMUM largest dimension found across all sampled images.
-    Minimum is used because imgsz cannot exceed what the smallest image supports
-    -- if even one image is 640px, training at 1024px would upscale it.
+    Returns the median largest dimension across sampled images.
+    Median is used as a representative native resolution for auto-config.
 
     Samples up to 20 images evenly spread across the dataset for reliability
     without reading every file.
@@ -219,7 +219,7 @@ def detect_image_size(train_path: Path) -> int:
     # Warn if dataset has mixed resolutions
     if min_size != max_size:
         print(f"  [NOTE] Mixed image sizes detected in sample: {min_size}px - {max_size}px")
-        print(f"         Using minimum ({min_size}px) as imgsz ceiling")
+        print(f"         Using median ({int(statistics.median(sizes))}px) as native resolution reference")
 
     return statistics.median(sizes)
 
@@ -257,7 +257,7 @@ def calc_max_batch_for_imgsz(vram_gb: float, model: str, imgsz: int) -> int:
     return 4
 
 
-def select_model_and_imgsz(image_count: int, vram_gb: float, native_imgsz: int = None) -> tuple:
+def select_model_and_imgsz(image_count: int, vram_gb: float) -> tuple:
     """
     Select best model and image size based on dataset size, VRAM and native image resolution.
     Priority: best quality within hardware limits.
@@ -286,10 +286,6 @@ def select_model_and_imgsz(image_count: int, vram_gb: float, native_imgsz: int =
     │ any         │ < 8GB    │ yolov8m    │ 640    │ low VRAM, minimal safe config            │
     │ any         │ None/CPU │ yolov8m    │ 640    │ CPU fallback                             │
     └─────────────┴──────────┴────────────┴────────┴──────────────────────────────────────────┘
-
-    Native resolution cap examples:
-      native=640  -> imgsz capped at 640 (no upscaling)
-      native=1920 -> imgsz selected freely by VRAM/batch logic above
 
     Any value can be overridden via --model, --imgsz, --batch, --workers flags.
 
@@ -324,12 +320,6 @@ def select_model_and_imgsz(image_count: int, vram_gb: float, native_imgsz: int =
     else:
         model, imgsz = "yolov8m.pt", 640
 
-    # Cap imgsz to native image resolution -- upscaling adds no detail
-    if native_imgsz is not None:
-        native_snapped = snap_to_standard(native_imgsz)
-        if imgsz > native_snapped:
-            imgsz = native_snapped
-
     # Final safety check: if chosen imgsz causes batch < MIN_BATCH, drop imgsz
     if vram_gb and calc_max_batch_for_imgsz(vram_gb, model, imgsz) < MIN_BATCH:
         imgsz = 1024
@@ -339,12 +329,14 @@ def select_model_and_imgsz(image_count: int, vram_gb: float, native_imgsz: int =
     return model, imgsz
 
 
-def calc_batch(vram_gb: float, model: str, imgsz: int) -> int:
+def calc_batch(vram_gb: float, model: str, imgsz: int, multi_scale: float = 0.0) -> int:
     """Calculate max safe batch size for given VRAM and model."""
     if vram_gb is None:
         return 4
 
-    scale = (imgsz / 1024) ** 2
+    # Size against peak multi_scale batches to avoid OOM (imgsz * (1 + multi_scale))
+    effective_imgsz = imgsz * (1 + multi_scale) if multi_scale > 0 else imgsz
+    scale = (effective_imgsz / 1024) ** 2
     vram_per_img = VRAM_PER_IMAGE.get(model, 1.10) * scale  # same default as calc_max_batch_for_imgsz
     usable_vram = vram_gb * 0.85
     batch = int(usable_vram / vram_per_img)
@@ -353,6 +345,19 @@ def calc_batch(vram_gb: float, model: str, imgsz: int) -> int:
         if batch >= b:
             return b
     return 4
+
+
+def calc_augmentation_config(vram_gb: float, model: str, imgsz: int) -> dict:
+    multi_scale = 0.5 if calc_batch(vram_gb, model, imgsz, multi_scale=0.5) >= MIN_BATCH else 0.0
+    return {
+        "degrees": 180,
+        "flipud": 0.5,
+        "copy_paste": 0.3,
+        "mixup": 0.15,
+        "multi_scale": multi_scale,
+        "close_mosaic": 60,
+        "cos_lr": True,
+    }
 
 
 def calc_workers(cpu_cores: int, ram_gb: float) -> int:
@@ -371,10 +376,13 @@ def auto_config(yaml_path: Path, args) -> dict:
     native_size = detect_image_size(train_path)
 
     # Select model + imgsz together
-    auto_model, auto_imgsz = select_model_and_imgsz(image_count, hw["vram_gb"], native_size)
+    auto_model, auto_imgsz = select_model_and_imgsz(image_count, hw["vram_gb"])
     model  = args.model if args.model else auto_model
     imgsz  = args.imgsz if args.imgsz else auto_imgsz
-    batch   = args.batch   if args.batch   else calc_batch(hw["vram_gb"], model, imgsz)
+    augmentation = calc_augmentation_config(hw["vram_gb"], model, imgsz)
+    batch   = args.batch   if args.batch   else calc_batch(
+        hw["vram_gb"], model, imgsz, multi_scale=augmentation["multi_scale"]
+    )
     workers = args.workers if args.workers else calc_workers(hw["cpu_cores"], hw["ram_gb"])
 
     return {
@@ -382,6 +390,7 @@ def auto_config(yaml_path: Path, args) -> dict:
         "imgsz":       imgsz,
         "batch":       batch,
         "workers":     workers,
+        "augmentation": augmentation,
         "image_count": image_count,
         "native_size": native_size,
         "hw":          hw,
@@ -415,10 +424,16 @@ def print_auto_config(config: dict, args):
     print(f"  batch      : {config['batch']}  ({batch_src})")
     print(f"  workers    : {config['workers']}  ({worker_src})")
 
-    # Warn if imgsz was capped by native resolution
-    if not args.imgsz and native and config['imgsz'] < 1024:
-        print(f"  [NOTE] imgsz capped to {config['imgsz']}px to match native image resolution ({native}px)")
-        print(f"         Re-export your dataset at higher resolution for better results")
+    aug = config["augmentation"]
+    ms_status = "(enabled - VRAM ok)" if aug["multi_scale"] > 0 else "(disabled - insufficient VRAM)"
+    print(f"\n[Augmentation Config]")
+    print(f"  degrees      : {aug['degrees']}")
+    print(f"  flipud       : {aug['flipud']}")
+    print(f"  copy_paste   : {aug['copy_paste']}")
+    print(f"  mixup        : {aug['mixup']}")
+    print(f"  multi_scale  : {aug['multi_scale']}  {ms_status}")
+    print(f"  close_mosaic : {aug['close_mosaic']}")
+    print(f"  cos_lr       : {aug['cos_lr']}")
 
 
 # -- Argument Parsing ----------------------------------------------------------
@@ -671,16 +686,6 @@ def train(args):
 
     model = YOLO(resolve_pretrained_weights(config["model"]))
 
-    print(f"\n[Augmentation Config]")
-    print(f"  degrees      : 180")
-    print(f"  flipud       : 0.5")
-    print(f"  copy_paste   : 0.3")
-    print(f"  mixup        : 0.15")
-    print(f"  multi_scale  : 0.5")
-    print(f"  cos_lr       : True")
-    print(f"  close_mosaic : 60")
-    print()
-
     model.train(
         data=str(yaml_path),
         epochs=args.epochs,
@@ -694,13 +699,7 @@ def train(args):
         save=True,
         plots=True,
         verbose=True,
-        degrees=180,
-        flipud=0.5,
-        copy_paste=0.3,
-        mixup=0.15,
-        multi_scale=0.5,
-        close_mosaic=60,
-        cos_lr=True,
+        **config["augmentation"],
     )
 
     run_dir = output_dir / run_name
