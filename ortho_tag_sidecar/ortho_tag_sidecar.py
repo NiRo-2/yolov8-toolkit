@@ -186,7 +186,7 @@ def verify_sidecar_json_file(path: Path) -> Tuple[bool, List[str], List[str]]:
 def main_verify(argv: Optional[List[str]] = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if len(argv) != 1:
-        print("Usage: python ortho_tag_sidecar.py <sidecar.json>", file=sys.stderr)
+        print("Usage: python ortho_tag_sidecar/ortho_tag_sidecar.py <sidecar.json>", file=sys.stderr)
         return 2
     p = Path(argv[0])
     if not p.is_file():

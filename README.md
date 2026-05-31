@@ -10,14 +10,14 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 
 | Script | What it does |
 |---|---|
-| `vlm_yolo_prep.py` | Build a labelled YOLOv8 dataset from raw photos using a local VLM — no manual annotation needed |
-| `voc_to_yolo.py` | Convert an existing Pascal VOC annotated dataset to YOLOv8 format |
-| `flat_yolo_split.py` | Split a flat folder of YOLO images + labels into train/val and write `data.yaml` |
-| `remap_yolo_labels.py` | Copy an existing YOLO dataset to a new location and remap/merge class labels |
-| `train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
-| `detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
-| `yolov8_pt_to_xanylabeling_onnx.py` | Convert a detection `best.pt` to fixed-size ONNX + `config.yaml` for [X-AnyLabeling](https://github.com/CVHub520/X-AnyLabeling) **Load Custom Model** |
-| `ortho_tag_sidecar.py` | Verify detection JSON sidecars for Ortho-Tag / B3DM georeference keys (`Usage:` one `.json` path) |
+| `vlm_yolo_prep/vlm_yolo_prep.py` | Build a labelled YOLOv8 dataset from raw photos using a local VLM — no manual annotation needed |
+| `voc_to_yolo/voc_to_yolo.py` | Convert an existing Pascal VOC annotated dataset to YOLOv8 format |
+| `flat_yolo_split/flat_yolo_split.py` | Split a flat folder of YOLO images + labels into train/val and write `data.yaml` |
+| `remap_yolo_labels/remap_yolo_labels.py` | Copy an existing YOLO dataset to a new location and remap/merge class labels |
+| `train_detector/train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
+| `detect_images/detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
+| `yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py` | Convert a detection `best.pt` to fixed-size ONNX + `config.yaml` for [X-AnyLabeling](https://github.com/CVHub520/X-AnyLabeling) **Load Custom Model** |
+| `ortho_tag_sidecar/ortho_tag_sidecar.py` | Verify detection JSON sidecars for Ortho-Tag / B3DM georeference keys (`Usage:` one `.json` path) |
 
 ---
 
@@ -27,7 +27,7 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 [Raw photos]        [VOC dataset]        [Flat YOLO labels folder]
      |                   |                        |
      v                   v                        v
-vlm_yolo_prep.py   voc_to_yolo.py          flat_yolo_split.py
+vlm_yolo_prep/     voc_to_yolo/          flat_yolo_split/
      |                   |                        |
      +-------------------+------------------------+
                      |
@@ -36,12 +36,12 @@ vlm_yolo_prep.py   voc_to_yolo.py          flat_yolo_split.py
           (train / val + data.yaml)
                      |
                      v
-          train_detector.py
+          train_detector/
                      |
          +-----------+-----------+
          |                       |
          v                       v
-  yolov8_pt_to_xanylabeling_onnx.py   detect_images.py
+  yolov8_pt_to_xanylabeling_onnx/   detect_images/
  (ONNX + config.yaml)                 (inference)
 ```
 
@@ -67,7 +67,7 @@ Sends each photo to a Vision-Language Model running locally in LM Studio, gets b
 
 ### Basic usage
 ```bash
-python vlm_yolo_prep.py \
+python vlm_yolo_prep/vlm_yolo_prep.py \
     --input  C:/data/raw_photos \
     --output C:/data/dataset \
     --objects screw "hex bolt" "countersunk screw"
@@ -79,7 +79,7 @@ Annotated preview images are saved to `<output>/preview/` by default so you can 
 
 ### Windows batch file
 ```bat
-python vlm_yolo_prep.py ^
+python vlm_yolo_prep/vlm_yolo_prep.py ^
     --input  "C:\data\raw_photos" ^
     --output "C:\data\dataset"    ^
     --objects Screw               ^
@@ -147,7 +147,7 @@ If you already have a dataset annotated in Pascal VOC format (XML files), this s
 
 ### Basic usage
 ```bash
-python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset
+python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/dataset
 ```
 
 Classes are auto-discovered from the XML files and sorted alphabetically. Use `--classes` to control the order (and therefore the class IDs) explicitly.
@@ -189,14 +189,14 @@ input/
 
 ```bash
 # Auto-discover classes, 70/30 split
-python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset
+python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/dataset
 
 # Control class order (first = ID 0, second = ID 1, ...)
-python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset \
+python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/dataset \
     --classes screw bolt "hex bolt"
 
 # With test split
-python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset --enable-test
+python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/dataset --enable-test
 ```
 
 ---
@@ -220,12 +220,12 @@ labels/
 ### Basic usage
 
 ```bash
-python flat_yolo_split.py --input C:/data/labels --output C:/data/dataset
+python flat_yolo_split/flat_yolo_split.py --input C:/data/labels --output C:/data/dataset
 ```
 
 ### Windows batch file
 
-Copy `_Run_flat_yolo_split_template.bat` to `_Run_flat_yolo_split_personal.bat`, set `INPUT_DIR` and `OUTPUT_DIR`, then run it. Personal batch files are gitignored (`*_personal.bat`).
+Copy `flat_yolo_split/_Run_flat_yolo_split_template.bat` to `flat_yolo_split/_Run_flat_yolo_split_personal.bat` in the same folder, set `INPUT_DIR` and `OUTPUT_DIR`, then run it. Personal batch files are gitignored (`*_personal.bat`).
 
 ### All arguments
 
@@ -248,7 +248,7 @@ Copy `_Run_flat_yolo_split_template.bat` to `_Run_flat_yolo_split_personal.bat`,
 ### Example
 
 ```bash
-python flat_yolo_split.py ^
+python flat_yolo_split/flat_yolo_split.py ^
     --input  "d:\Nir\Projects\ScrewIdentifier\v3\labels" ^
     --output "d:\Nir\Projects\ScrewIdentifier\v3\yolo_dataset"
 ```
@@ -272,17 +272,17 @@ The script treats all inputs as read-only and writes only to a new output folder
 
 ### Basic usage
 ```bash
-python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_v2 --map 0:bolt_a:Bolt --map 0:bolt_b:Bolt
+python remap_yolo_labels/remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_v2 --map 0:bolt_a:Bolt --map 0:bolt_b:Bolt
 ```
 
 ### Examples
 ```bash
 # One dataset: merge selected classes
-python remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_merged \
+python remap_yolo_labels/remap_yolo_labels.py --input C:/data/yolo --output C:/data/yolo_merged \
     --map 0:bolt_a:Bolt --map 0:bolt_b:Bolt
 
 # Merge two datasets and align names to shared IDs
-python remap_yolo_labels.py \
+python remap_yolo_labels/remap_yolo_labels.py \
     --input C:/data/yolo_a \
     --input C:/data/yolo_b \
     --output C:/data/yolo_merged \
@@ -291,7 +291,7 @@ python remap_yolo_labels.py \
     --map 1:rusty_screw:Screw
 
 # Merge three datasets
-python remap_yolo_labels.py \
+python remap_yolo_labels/remap_yolo_labels.py \
     --input C:/data/a \
     --input C:/data/b \
     --input C:/data/c \
@@ -299,7 +299,7 @@ python remap_yolo_labels.py \
     --map 2:vague:Screw
 
 # Merge many datasets (10 shown; repeat --input as needed)
-python remap_yolo_labels.py \
+python remap_yolo_labels/remap_yolo_labels.py \
     --input C:/data/d1 --input C:/data/d2 --input C:/data/d3 --input C:/data/d4 --input C:/data/d5 \
     --input C:/data/d6 --input C:/data/d7 --input C:/data/d8 --input C:/data/d9 --input C:/data/d10 \
     --output C:/data/merged_many \
@@ -311,8 +311,8 @@ python remap_yolo_labels.py \
 
 ### Windows batch helper
 
-Use `_Run_remap_yolo_labels_template.bat`:
-- copy it to `_Run_remap_yolo_labels_personal.bat`
+Use `remap_yolo_labels/_Run_remap_yolo_labels_template.bat`:
+- copy it to `remap_yolo_labels/_Run_remap_yolo_labels_personal.bat` (same folder)
 - edit `INPUT_DATASET_1` (required), optional `INPUT_DATASET_2` through `INPUT_DATASET_10`, `OUTPUT_DATASET`, and `MAP_ARGS`
 - run your personal copy
 
@@ -324,26 +324,26 @@ Use `_Run_remap_yolo_labels_template.bat`:
 
 ### Basic usage
 ```bash
-python train_detector.py --input /path/to/data.yaml --name my_detector_v1
+python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector_v1
 ```
 
 ### Windows paths work as-is
 ```bash
-python train_detector.py --input c:\Users\Me\Dataset\data.yaml --name my_detector_v1
+python train_detector/train_detector.py --input c:\Users\Me\Dataset\data.yaml --name my_detector_v1
 ```
 
 ### Override any auto-calculated value
 ```bash
-python train_detector.py --input c:\Users\Me\Dataset\data.yaml --name my_detector_v1 --model yolov8x.pt --batch 8
+python train_detector/train_detector.py --input c:\Users\Me\Dataset\data.yaml --name my_detector_v1 --model yolov8x.pt --batch 8
 ```
 
 ### Resume a crashed or interrupted run
 ```bash
 # Resume specific run by name
-python train_detector.py --resume --name my_detector_v1
+python train_detector/train_detector.py --resume --name my_detector_v1
 
 # Resume most recent run automatically
-python train_detector.py --resume
+python train_detector/train_detector.py --resume
 ```
 
 ### All arguments
@@ -385,7 +385,7 @@ Batch size is calculated from VRAM × 85% safety margin ÷ VRAM-per-image estima
 
 You can always override any single value while letting the rest auto-calculate:
 ```bash
-python train_detector.py --input data.yaml --name run1 --model yolov8x.pt
+python train_detector/train_detector.py --input data.yaml --name run1 --model yolov8x.pt
 ```
 
 ### Output
@@ -418,26 +418,26 @@ After training, the script automatically runs validation and reports:
 Run a trained model over a folder of images:
 
 ```bash
-python detect_images.py \
+python detect_images/detect_images.py \
     --images /path/to/images \
     --model  runs/detect/my_detector_v1/weights/best.pt
 ```
 
 ### With custom confidence threshold
 ```bash
-python detect_images.py --images /path/to/images --model best.pt --conf 0.5
+python detect_images/detect_images.py --images /path/to/images --model best.pt --conf 0.5
 ```
 
 ### Export detection data as JSON
 ```bash
-python detect_images.py --images /path/to/images --model best.pt --export-json
+python detect_images/detect_images.py --images /path/to/images --model best.pt --export-json
 ```
 
 Saves `<images_dir>/detections/<name>.json` for images with detections, plus `labels.txt` mapping class IDs to names.
 
 ### JSON-only mode (no annotated image files)
 ```bash
-python detect_images.py --images /path/to/images --model best.pt --no-export-annotated-images
+python detect_images/detect_images.py --images /path/to/images --model best.pt --no-export-annotated-images
 ```
 
 ### Subdirectory scanning (default ON)
@@ -452,7 +452,7 @@ Outputs are kept flat under `<images_dir>/detections/`. Files inside subfolders 
 Disable with `--no-recursive` to scan only the top-level of `--images`:
 
 ```bash
-python detect_images.py --images /path/to/images --model best.pt --no-recursive
+python detect_images/detect_images.py --images /path/to/images --model best.pt --no-recursive
 ```
 
 ### Performance: batched inference + threaded post-processing (default ON)
@@ -470,7 +470,7 @@ Auto-sizing rules:
 To disable both and get the previous fully sequential behaviour:
 
 ```bash
-python detect_images.py --images /path/to/images --model best.pt --workers 1 --batch 1
+python detect_images/detect_images.py --images /path/to/images --model best.pt --workers 1 --batch 1
 ```
 
 Notes:
@@ -514,7 +514,7 @@ Ortho-Tag B3DM (`detect_to_3d`) expects `metadata` keys in **ExifTool `-G1` form
 After export, confirm georeference fields on a sample file:
 
 ```bash
-python ortho_tag_sidecar.py path/to/detections/some_image.json
+python ortho_tag_sidecar/ortho_tag_sidecar.py path/to/detections/some_image.json
 ```
 
 Exit code `0` means latitude and longitude are present in the expected keys; the script also lists recommended fields (altitude, heading, pitch, focal length) that often come from DJI XMP via ExifTool.
@@ -522,7 +522,7 @@ Exit code `0` means latitude and longitude are present in the expected keys; the
 Run detection with strict verification (fails the run if any written sidecar lacks lat/lon):
 
 ```bash
-python detect_images.py --images ... --model ... --verify-b3dm
+python detect_images/detect_images.py --images ... --model ... --verify-b3dm
 ```
 
 ### All arguments
@@ -566,7 +566,7 @@ It writes a folder containing:
 ### Basic usage
 
 ```bash
-python yolov8_pt_to_xanylabeling_onnx.py runs/detect/my_detector_v1/weights/best.pt
+python yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py runs/detect/my_detector_v1/weights/best.pt
 ```
 
 Default output directory: `<parent_of_pt>/<stem>_xanylabeling/` (for `.../weights/best.pt` → `.../weights/best_xanylabeling/`).
@@ -590,11 +590,11 @@ Open the app → **AI** menu → **Load Custom Model** (or the equivalent in you
 
 ### Windows batch template
 
-Copy `_Run_yolov8_pt_to_xanylabeling_onnx_template.bat` to a personal file, set `weightsPath`, and optionally `extraArgs` (e.g. `--output-dir "D:\out" --imgsz 640 --device cpu`).
+Copy `yolov8_pt_to_xanylabeling_onnx/_Run_yolov8_pt_to_xanylabeling_onnx_template.bat` to `yolov8_pt_to_xanylabeling_onnx/_Run_yolov8_pt_to_xanylabeling_onnx_personal.bat` in the same folder, set `weightsPath`, and optionally `extraArgs` (e.g. `--output-dir "D:\out" --imgsz 640 --device cpu`).
 
 ### ExifTool helper batch (Windows)
 
-Use `_Run_exiftool.bat` to inspect metadata for a single image and save full output to:
+Use `exiftool/_Run_exiftool.bat` to inspect metadata for a single image and save full output to:
 `./exiftool/outputs/`.
 
 The helper expects ExifTool files in `./exiftool/`. If that directory is missing, the batch script exits with instructions to download ExifTool from [https://exiftool.org/](https://exiftool.org/) and place it there.

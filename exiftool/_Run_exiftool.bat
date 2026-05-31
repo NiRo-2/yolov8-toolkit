@@ -3,19 +3,19 @@ REM Dumps full image metadata via repo-local ExifTool to exiftool/outputs/.
 setlocal
 
 set "scriptDir=%~dp0"
-set "exiftoolDir=%scriptDir%exiftool"
-set "outputDir=%exiftoolDir%\outputs"
+set "exiftoolDir=%scriptDir%"
+set "outputDir=%exiftoolDir%outputs"
 
-set "exiftoolExePath=%exiftoolDir%\exiftool.exe"
-set "exiftoolExeKPath=%exiftoolDir%\exiftool(-k).exe"
-set "perlPath=%exiftoolDir%\exiftool_files\perl.exe"
-set "exiftoolPlPath=%exiftoolDir%\exiftool_files\exiftool.pl"
+set "exiftoolExePath=%exiftoolDir%exiftool.exe"
+set "exiftoolExeKPath=%exiftoolDir%exiftool(-k).exe"
+set "perlPath=%exiftoolDir%exiftool_files\perl.exe"
+set "exiftoolPlPath=%exiftoolDir%exiftool_files\exiftool.pl"
 
-if not exist "%exiftoolDir%" (
-    echo ERROR: ExifTool directory not found:
+if not exist "%exiftoolExePath%" if not exist "%perlPath%" (
+    echo ERROR: ExifTool runtime not found in:
     echo "%exiftoolDir%"
     echo.
-    echo Download ExifTool and place it in this folder.
+    echo Download ExifTool and place exiftool.exe here.
     echo URL: https://exiftool.org/
     echo Expected executable path:
     echo "%exiftoolExePath%"

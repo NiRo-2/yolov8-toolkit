@@ -5,7 +5,7 @@ X-AnyLabeling expects fixed-size ONNX (no dynamic batch). Load the YAML via
 AI -> ... -> Load Custom Model.
 
 Usage:
-    python yolov8_pt_to_xanylabeling_onnx.py path/to/best.pt
+    python yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py path/to/best.pt
 
     --output-dir   output folder (default: <parent_of_pt>/<stem>_xanylabeling)
     --imgsz        square export size (default: from checkpoint, else 640)
@@ -163,13 +163,12 @@ def main() -> None:
     if weights.suffix.lower() != ".pt":
         print(f"[WARNING] Expected a .pt file, got: {weights.suffix}")
 
-    stem = weights.stem
-    out_dir = (
-        normalize_path(args.output_dir)
-        if args.output_dir
-        else (weights.parent / f"{stem}_xanylabeling")
-    )
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if not (0.0 <= args.conf <= 1.0):
+        print(f"[ERROR] --conf must be between 0.0 and 1.0, got: {args.conf}")
+        sys.exit(1)
+    if not (0.0 <= args.iou <= 1.0):
+        print(f"[ERROR] --iou must be between 0.0 and 1.0, got: {args.iou}")
+        sys.exit(1)
 
     print(f"\n[Load] {weights}")
     model = YOLO(str(weights))
@@ -179,6 +178,14 @@ def main() -> None:
             f"[ERROR] This tool supports detection checkpoints only (task={model.task!r})."
         )
         sys.exit(1)
+
+    stem = weights.stem
+    out_dir = (
+        normalize_path(args.output_dir)
+        if args.output_dir
+        else (weights.parent / f"{stem}_xanylabeling")
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     imgsz = resolve_imgsz(model, weights, args.imgsz)
     conf_name = args.name if args.name else stem

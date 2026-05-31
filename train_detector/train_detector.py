@@ -4,16 +4,16 @@ Auto-detects hardware, dataset size and image resolution to calculate optimal tr
 
 Usage:
     # Fresh training run (auto-configures everything)
-    python train_detector.py --input /path/to/data.yaml --name my_detector_v1
+    python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector_v1
 
     # Override any auto-calculated value
-    python train_detector.py --input /path/to/data.yaml --name my_detector_v1 --model yolov8x.pt --batch 8
+    python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector_v1 --model yolov8x.pt --batch 8
 
     # Resume a crashed/interrupted run
-    python train_detector.py --resume --name my_detector_v1
+    python train_detector/train_detector.py --resume --name my_detector_v1
 
     # Resume without --name: auto-finds the most recent run
-    python train_detector.py --resume
+    python train_detector/train_detector.py --resume
 
     --input   path to data.yaml file (required for fresh training)
               works with Windows paths: c:\Users\Ni\Desktop\project\data.yaml
@@ -24,7 +24,7 @@ Usage:
     --workers override auto-calculated worker count
     --imgsz   override auto-calculated image size in pixels
     --epochs  number of training epochs (default: 600)
-    --patience early stopping patience in epochs (default: 50)
+    --patience early stopping patience in epochs (default: 100)
     --device  0 for GPU, cpu for CPU (default: 0)
 
 Output:
@@ -36,10 +36,14 @@ Output:
 
 import argparse
 import os
+import statistics
 import sys
 import yaml
 from pathlib import Path
 from ultralytics import YOLO
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 # -- Path Normalization --------------------------------------------------------
@@ -172,7 +176,7 @@ def detect_image_size(train_path: Path) -> int:
         print(f"  [NOTE] Mixed image sizes detected in sample: {min_size}px - {max_size}px")
         print(f"         Using minimum ({min_size}px) as imgsz ceiling")
 
-    return min_size
+    return statistics.median(sizes)
 
 
 # -- Auto Config ---------------------------------------------------------------
@@ -414,8 +418,8 @@ def parse_args():
         help="Run name to resume, or name for a new run (default: detector_v1)"
     )
     parser.add_argument(
-        "--patience", type=int, default=50,
-        help="Early stopping patience in epochs (default: 50)"
+        "--patience", type=int, default=100,
+        help="Early stopping patience in epochs (default: 100)"
     )
 
     return parser.parse_args()
@@ -429,7 +433,7 @@ def find_last_checkpoint(name: str = None) -> Path:
     - If --name given: looks in runs/detect/<name>/weights/last.pt
     - If no --name:    finds the most recently modified run folder automatically
     """
-    runs_dir = Path.cwd() / "runs" / "detect"
+    runs_dir = REPO_ROOT / "runs" / "detect"
 
     if not runs_dir.exists():
         print(f"[ERROR] No runs directory found at: {runs_dir}")
@@ -506,8 +510,18 @@ def resume_training(args):
 
 # -- Dataset Validation --------------------------------------------------------
 
+def resolve_yaml_split_path(yaml_path: Path, split_val: str) -> Path:
+    """Resolve a train/val/test path from data.yaml relative to the yaml file."""
+    split_path = Path(str(split_val).replace("\\", "/"))
+    if not split_path.is_absolute():
+        split_path = (yaml_path.parent / split_path).resolve()
+    else:
+        split_path = split_path.resolve()
+    return split_path
+
+
 def validate_dataset(yaml_path: Path) -> None:
-    """Validate data.yaml exists and has required fields."""
+    """Validate data.yaml exists, has required fields, and paths contain images."""
 
     if not yaml_path.exists():
         print(f"[ERROR] data.yaml not found: {yaml_path}")
@@ -520,16 +534,54 @@ def validate_dataset(yaml_path: Path) -> None:
         data = yaml.safe_load(f)
 
     required_keys = ["train", "val", "nc", "names"]
+    all_errors: list[str] = []
     for key in required_keys:
         if key not in data:
-            print(f"[ERROR] data.yaml is missing required key: '{key}'")
-            sys.exit(1)
+            all_errors.append(f"data.yaml is missing required key: '{key}'")
+
+    if all_errors:
+        print("[ERROR] Validation failed:")
+        for err in all_errors:
+            print(f"  - {err}")
+        sys.exit(1)
+
+    nc = data["nc"]
+    names = data["names"]
+    if not isinstance(names, (list, dict)):
+        all_errors.append(f"names must be a list or dict, got {type(names).__name__}")
+    else:
+        name_count = len(names)
+        if nc != name_count:
+            all_errors.append(f"nc ({nc}) does not match len(names) ({name_count})")
+
+    for split_key in ("train", "val"):
+        split_val = data.get(split_key)
+        if not split_val:
+            all_errors.append(f"data.yaml '{split_key}' is empty or missing")
+            continue
+        split_path = resolve_yaml_split_path(yaml_path, str(split_val))
+        if not split_path.is_dir():
+            all_errors.append(f"{split_key} directory not found: {split_path}")
+            continue
+        img_count = count_images(split_path)
+        if img_count < 1:
+            all_errors.append(f"{split_key} directory has no images: {split_path}")
+
+    if all_errors:
+        print("[ERROR] Validation failed:")
+        for err in all_errors:
+            print(f"  - {err}")
+        sys.exit(1)
+
+    train_path = resolve_yaml_split_path(yaml_path, str(data["train"]))
+    val_path = resolve_yaml_split_path(yaml_path, str(data["val"]))
 
     print(f"\n[Dataset]")
     print(f"  yaml     : {yaml_path}")
     print(f"  classes  : {data['nc']}")
     print(f"  names    : {data['names']}")
-    print(f"  val imgs : {data.get('val', 'not set')}")
+    print(f"  train    : {train_path}  ({count_images(train_path)} imgs)")
+    print(f"  val      : {val_path}  ({count_images(val_path)} imgs)")
     if "test" in data:
         print(f"  test     : {data['test']}")
 
@@ -543,7 +595,7 @@ def train(args):
         sys.exit(1)
 
     yaml_path  = normalize_path(args.input)
-    output_dir = Path.cwd() / "runs" / "detect"
+    output_dir = REPO_ROOT / "runs" / "detect"
     run_name   = args.name if args.name else "detector_v1"
 
     validate_dataset(yaml_path)
@@ -563,6 +615,16 @@ def train(args):
 
     model = YOLO(config["model"])
 
+    print(f"\n[Augmentation Config]")
+    print(f"  degrees      : 180")
+    print(f"  flipud       : 0.5")
+    print(f"  copy_paste   : 0.3")
+    print(f"  mixup        : 0.15")
+    print(f"  multi_scale  : 0.5")
+    print(f"  cos_lr       : True")
+    print(f"  close_mosaic : 60")
+    print()
+
     model.train(
         data=str(yaml_path),
         epochs=args.epochs,
@@ -576,6 +638,13 @@ def train(args):
         save=True,
         plots=True,
         verbose=True,
+        degrees=180,
+        flipud=0.5,
+        copy_paste=0.3,
+        mixup=0.15,
+        multi_scale=0.5,
+        close_mosaic=60,
+        cos_lr=True,
     )
 
     run_dir = output_dir / run_name

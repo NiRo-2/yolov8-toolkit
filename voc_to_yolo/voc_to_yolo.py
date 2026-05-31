@@ -42,13 +42,13 @@ SUPPORTED VOC LAYOUTS
 USAGE
 -----
   # Auto-split (70% train / 30% val)
-  python voc_to_yolo.py --input C:/data/voc --output C:/data/yolo
+  python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/yolo
 
   # Custom split with test set
-  python voc_to_yolo.py --input C:/data/voc --output C:/data/yolo --enable-test
+  python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/yolo --enable-test
 
   # Specify class names explicitly (order determines class ID)
-  python voc_to_yolo.py --input C:/data/voc --output C:/data/yolo --classes screw bolt
+  python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/yolo --classes screw bolt
 
 REQUIRED ARGS
   --input       Folder containing VOC images + XML annotations
@@ -85,14 +85,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         epilog="""
 examples:
   # Auto-discover classes, 70/30 train/val split
-  python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset
+  python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/dataset
 
   # Explicit class list (controls ID assignment)
-  python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset \\
+  python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/dataset \\
       --classes screw bolt "hex bolt"
 
   # With test split
-  python voc_to_yolo.py --input C:/data/voc --output C:/data/dataset \\
+  python voc_to_yolo/voc_to_yolo.py --input C:/data/voc --output C:/data/dataset \\
       --train 0.70 --val 0.20 --enable-test
         """,
     )
@@ -362,20 +362,6 @@ def convert(args: argparse.Namespace) -> None:
     if not input_dir.is_dir():
         sys.exit(f"[ERROR] --input directory not found: {input_dir}")
 
-    # Auto-version output dir if not empty
-    if output_dir.exists() and any(output_dir.iterdir()):
-        original = output_dir
-        version  = 2
-        while True:
-            candidate = output_dir.parent / f"{output_dir.name}_v{version}"
-            if not candidate.exists() or not any(candidate.iterdir()):
-                output_dir = candidate
-                break
-            version += 1
-        print(f"[INFO] Output dir not empty — using: {output_dir}")
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     # ---- Discover image/xml pairs -------------------------------------------
     print(f"\n[SCAN] Searching for image/XML pairs in {input_dir} ...")
     pairs = find_image_xml_pairs(input_dir)
@@ -404,6 +390,38 @@ def convert(args: argparse.Namespace) -> None:
     mapping_str = "  |  ".join(f"{name}={idx}" for name, idx in class_to_id.items())
     print(f"          Mapping: {mapping_str}")
 
+    all_errors: list[str] = []
+    for img_path, xml_path in pairs:
+        try:
+            _, _, objects = parse_voc_xml(xml_path)
+        except Exception as exc:
+            all_errors.append(f"{xml_path.name}: {exc}")
+            continue
+        for obj in objects:
+            name = obj["name"]
+            if name not in class_to_id:
+                all_errors.append(f"{xml_path.name}: unknown class '{name}'")
+
+    if all_errors:
+        print("[ERROR] Validation failed:")
+        for err in all_errors:
+            print(f"  - {err}")
+        sys.exit(1)
+
+    # Auto-version output dir if not empty
+    if output_dir.exists() and any(output_dir.iterdir()):
+        original = output_dir
+        version  = 2
+        while True:
+            candidate = output_dir.parent / f"{output_dir.name}_v{version}"
+            if not candidate.exists() or not any(candidate.iterdir()):
+                output_dir = candidate
+                break
+            version += 1
+        print(f"[INFO] Output dir not empty — using: {output_dir}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     # ---- Split ---------------------------------------------------------------
     train_pairs, val_pairs, test_pairs = split_files(
         pairs, args.train, args.val, args.seed, args.enable_test
@@ -431,7 +449,6 @@ def convert(args: argparse.Namespace) -> None:
     print(f"{'='*64}\n")
 
     # ---- Convert and copy ----------------------------------------------------
-    skipped      = 0
     total_boxes  = 0
 
     splits_to_process = [("train", train_pairs), ("val", val_pairs)]
@@ -447,22 +464,13 @@ def convert(args: argparse.Namespace) -> None:
         for img_path, xml_path in split_pairs:
             print(f"  [{split_name}] {img_path.name}")
 
-            # Parse XML
-            try:
-                img_w, img_h, objects = parse_voc_xml(xml_path)
-            except Exception as exc:
-                print(f"    [WARN] Could not parse {xml_path.name}: {exc}. Skipping.")
-                skipped += 1
-                continue
+            # Parse XML (pre-validated)
+            img_w, img_h, objects = parse_voc_xml(xml_path)
 
             # Convert each object to YOLO format
             yolo_lines = []
             for obj in objects:
                 name = obj["name"]
-                if name not in class_to_id:
-                    print(f"    [WARN] Unknown class '{name}' — not in class list. Skipping object.")
-                    continue
-
                 class_id = class_to_id[name]
                 x_c, y_c, w, h = voc_bbox_to_yolo(
                     obj["xmin"], obj["ymin"], obj["xmax"], obj["ymax"],
@@ -495,8 +503,6 @@ def convert(args: argparse.Namespace) -> None:
     if args.enable_test:
         print(f"  Test images  : {len(test_pairs)}")
     print(f"  Total boxes  : {total_boxes}")
-    if skipped:
-        print(f"  Skipped      : {skipped} (check warnings above)")
     print(f"\n  data.yaml    : {yaml_path}")
     print(f"\n  To start training:")
     print(f'    yolo train model=yolov8m.pt data="{yaml_path}" epochs=100 imgsz=1280')

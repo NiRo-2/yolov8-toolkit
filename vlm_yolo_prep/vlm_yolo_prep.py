@@ -82,7 +82,7 @@ SETUP REQUIREMENTS
 
 USAGE
 -----
-  python vlm_yolo_prep.py \
+  python vlm_yolo_prep/vlm_yolo_prep.py \
       --input  C:/data/images \
       --output C:/data/dataset \
       --objects screw "hex bolt" "blue shirt" pedestrian
@@ -194,6 +194,21 @@ def parse_class_mapping_override(raw: list[str]) -> dict[str, int]:
     return mapping
 
 
+def probe_lm_studio(api_url: str, timeout: float) -> None:
+    """Verify LM Studio is reachable before staging or API calls."""
+    base = api_url.split("/v1/")[0].rstrip("/")
+    models_url = f"{base}/v1/models"
+    probe_timeout = min(max(timeout, 1.0), 10.0)
+    try:
+        response = requests.get(models_url, timeout=probe_timeout)
+        if response.status_code >= 400:
+            print(f"[ERROR] LM Studio probe failed ({response.status_code}): {models_url}")
+            sys.exit(1)
+    except requests.RequestException as exc:
+        print(f"[ERROR] Cannot reach LM Studio at {models_url}: {exc}")
+        sys.exit(1)
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vlm_yolo_prep.py",
@@ -202,20 +217,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
         epilog="""
 examples:
   # Minimal - classes auto-assigned, preview on by default
-  python vlm_yolo_prep.py \\
+  python vlm_yolo_prep/vlm_yolo_prep.py \\
       --input  C:/data/raw \\
       --output C:/data/dataset \\
       --objects screw bolt "hex bolt" "countersunk screw"
 
   # Multi-word objects, no preview
-  python vlm_yolo_prep.py \\
+  python vlm_yolo_prep/vlm_yolo_prep.py \\
       --input  C:/data/raw \\
       --output C:/data/dataset \\
       --objects "red car" "blue shirt" pedestrian "stop sign" \\
       --no-preview
 
   # Full control - override classes, faster model, custom splits
-  python vlm_yolo_prep.py \\
+  python vlm_yolo_prep/vlm_yolo_prep.py \\
       --input   "C:/my data/images" \\
       --output  "C:/my data/dataset" \\
       --objects screw bolt "hex bolt" fastener \\
@@ -1050,6 +1065,16 @@ def run_pipeline(args: argparse.Namespace, class_mapping: dict[str, int]) -> Non
     if not input_dir.is_dir():
         sys.exit(f"[ERROR] --input directory not found: {input_dir}")
 
+    all_images = sorted(
+        p for p in input_dir.iterdir()
+        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
+
+    if not all_images:
+        sys.exit(f"[ERROR] No supported images found in {input_dir}")
+
+    probe_lm_studio(args.url, args.timeout)
+
     # If output_dir already exists and is not empty, auto-version it
     # to avoid overwriting a previous run.
     # e.g. "dataset" -> "dataset_v2" -> "dataset_v3" -> ...
@@ -1076,15 +1101,6 @@ def run_pipeline(args: argparse.Namespace, class_mapping: dict[str, int]) -> Non
     staging_labels = staging_dir / "labels"
     staging_images.mkdir(parents=True, exist_ok=True)
     staging_labels.mkdir(parents=True, exist_ok=True)
-
-    # Collect all supported image files
-    all_images = sorted(
-        p for p in input_dir.iterdir()
-        if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
-    )
-
-    if not all_images:
-        sys.exit(f"[ERROR] No supported images found in {input_dir}")
 
     # Print run configuration
     if args.enable_test:
@@ -1203,6 +1219,12 @@ if __name__ == "__main__":
     # Build class mapping: use --classes override if provided, else auto-assign
     if args.classes:
         class_mapping = parse_class_mapping_override(args.classes)
+        missing = [obj for obj in args.objects if obj not in class_mapping]
+        if missing:
+            print("[ERROR] --classes is missing entries for --objects:")
+            for obj in missing:
+                print(f"  - {obj}")
+            sys.exit(1)
         print(f"[INFO] Using manual class mapping: {class_mapping}")
     else:
         class_mapping = auto_class_mapping(args.objects)

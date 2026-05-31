@@ -23,8 +23,8 @@ INPUT LAYOUT
 
 USAGE
 -----
-  python flat_yolo_split.py --input C:/data/labels --output C:/data/dataset
-  python flat_yolo_split.py -i C:/data/labels -o C:/data/dataset --enable-test
+  python flat_yolo_split/flat_yolo_split.py --input C:/data/labels --output C:/data/dataset
+  python flat_yolo_split/flat_yolo_split.py -i C:/data/labels -o C:/data/dataset --enable-test
 ================================================================================
 """
 
@@ -52,8 +52,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
-  python flat_yolo_split.py --input C:/data/labels --output C:/data/dataset
-  python flat_yolo_split.py -i C:/data/labels -o C:/data/dataset --train 0.70 --val 0.20 --enable-test
+  python flat_yolo_split/flat_yolo_split.py --input C:/data/labels --output C:/data/dataset
+  python flat_yolo_split/flat_yolo_split.py -i C:/data/labels -o C:/data/dataset --train 0.70 --val 0.20 --enable-test
         """,
     )
     parser.add_argument(
@@ -464,7 +464,7 @@ def run(args: argparse.Namespace) -> None:
         print(f"  Test images  : {len(test_items)}")
     print(f"  data.yaml    : {yaml_path}")
     print(f"\n  To start training:")
-    print(f'    python train_detector.py --input "{yaml_path}" --name my_detector')
+    print(f'    python train_detector/train_detector.py --input "{yaml_path}" --name my_detector')
     print(f"{'='*64}\n")
 
 

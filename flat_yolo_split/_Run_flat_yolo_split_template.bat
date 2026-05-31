@@ -40,6 +40,12 @@ if "%OUTPUT_DIR%"=="" (
     pause
     exit /b 1
 )
+if not exist "%INPUT_DIR%" (
+    echo ERROR: Input directory not found:
+    echo "%INPUT_DIR%"
+    pause
+    exit /b 1
+)
 
 echo Running flat YOLO split:
 echo   Input : "%INPUT_DIR%"

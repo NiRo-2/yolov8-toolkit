@@ -44,6 +44,66 @@ if "%OUTPUT_DATASET%"=="" (
     pause
     exit /b 1
 )
+if not exist "%INPUT_DATASET_1%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_1%"
+    pause
+    exit /b 1
+)
+if not "%INPUT_DATASET_2%"=="" if not exist "%INPUT_DATASET_2%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_2%"
+    pause
+    exit /b 1
+)
+if not "%INPUT_DATASET_3%"=="" if not exist "%INPUT_DATASET_3%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_3%"
+    pause
+    exit /b 1
+)
+if not "%INPUT_DATASET_4%"=="" if not exist "%INPUT_DATASET_4%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_4%"
+    pause
+    exit /b 1
+)
+if not "%INPUT_DATASET_5%"=="" if not exist "%INPUT_DATASET_5%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_5%"
+    pause
+    exit /b 1
+)
+if not "%INPUT_DATASET_6%"=="" if not exist "%INPUT_DATASET_6%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_6%"
+    pause
+    exit /b 1
+)
+if not "%INPUT_DATASET_7%"=="" if not exist "%INPUT_DATASET_7%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_7%"
+    pause
+    exit /b 1
+)
+if not "%INPUT_DATASET_8%"=="" if not exist "%INPUT_DATASET_8%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_8%"
+    pause
+    exit /b 1
+)
+if not "%INPUT_DATASET_9%"=="" if not exist "%INPUT_DATASET_9%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_9%"
+    pause
+    exit /b 1
+)
+if not "%INPUT_DATASET_10%"=="" if not exist "%INPUT_DATASET_10%" (
+    echo ERROR: Input dataset not found:
+    echo "%INPUT_DATASET_10%"
+    pause
+    exit /b 1
+)
 
 echo Running remap with:
 echo   Input[0]: "%INPUT_DATASET_1%"

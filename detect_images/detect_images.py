@@ -5,8 +5,8 @@ Runs a trained YOLOv8 model over a directory of images,
 draws bounding boxes with confidence scores, and saves results.
 
 Usage:
-    python detect_images.py --images /path/to/images --model /path/to/best.pt
-    python detect_images.py --images /path/to/images --model /path/to/best.pt --export-json
+    python detect_images/detect_images.py --images /path/to/images --model /path/to/best.pt
+    python detect_images/detect_images.py --images /path/to/images --model /path/to/best.pt --export-json
 
     --images      path to directory containing images (required)
                   supports Windows paths: c:\Users\Ni\Desktop\images
@@ -62,6 +62,10 @@ try:
 except Exception:
     torch = None  # type: ignore[assignment]
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_SIDECAR_DIR = _REPO_ROOT / "ortho_tag_sidecar"
+if str(_SIDECAR_DIR) not in sys.path:
+    sys.path.insert(0, str(_SIDECAR_DIR))
 from ortho_tag_sidecar import (
     merge_pillow_gps_exif_into_metadata,
     verify_sidecar_json_file,
@@ -71,7 +75,7 @@ from ortho_tag_sidecar import (
 # -- Config --------------------------------------------------------------------
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".tif", ".webp"}
-DEFAULT_EXIFTOOL_DIR = Path(__file__).resolve().parent / "exiftool"
+DEFAULT_EXIFTOOL_DIR = _REPO_ROOT / "exiftool"
 DEFAULT_EXIFTOOL_CANDIDATES = (
     DEFAULT_EXIFTOOL_DIR / "exiftool.exe",
     DEFAULT_EXIFTOOL_DIR / "exiftool",
@@ -341,6 +345,34 @@ def resolve_exiftool_command(exiftool_arg: Optional[str]):
     return None, None
 
 
+def require_exiftool_before_run(args, exiftool_cmd, exiftool_resolve_reason) -> None:
+    """Exit before inference if annotated saves need exifTool but it is unavailable."""
+    if args.exiftool and not exiftool_cmd:
+        print("[ERROR] --exiftool path is invalid or unusable.")
+        if exiftool_resolve_reason:
+            print(f"        Reason: {exiftool_resolve_reason}")
+        sys.exit(1)
+
+    if not args.export_annotated_images or args.allow_missing_exiftool or exiftool_cmd:
+        return
+
+    print("[ERROR] exiftool is required when saving images to detections/.")
+    if not DEFAULT_EXIFTOOL_DIR.exists():
+        print(f"        Default directory missing: {DEFAULT_EXIFTOOL_DIR}")
+        print("        Download exiftool and put it in this directory,")
+        print(f"        URL: {EXIFTOOL_DOWNLOAD_URL}")
+        print("        or pass --exiftool /path/to/exiftool(.exe).")
+    else:
+        print(f"        exiftool runtime not available in default directory: {DEFAULT_EXIFTOOL_DIR}")
+        if exiftool_resolve_reason:
+            print(f"        Reason: {exiftool_resolve_reason}")
+        print("        Download exiftool and place exiftool.exe there,")
+        print(f"        URL: {EXIFTOOL_DOWNLOAD_URL}")
+        print("        or pass --exiftool /path/to/exiftool(.exe).")
+    print("        To bypass (limited metadata copy), use --allow-missing-exiftool.")
+    sys.exit(1)
+
+
 # -- Main ----------------------------------------------------------------------
 
 def run(args):
@@ -397,6 +429,9 @@ def run(args):
     workers, workers_src = resolve_workers(args.workers)
     batch_size, batch_src = resolve_batch(args.batch)
 
+    exiftool_cmd, exiftool_resolve_reason = resolve_exiftool_command(args.exiftool)
+    require_exiftool_before_run(args, exiftool_cmd, exiftool_resolve_reason)
+
     # Create output directory
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -417,7 +452,6 @@ def run(args):
     # Load model
     model = YOLO(str(model_path))
     class_names = model.names
-    exiftool_cmd, exiftool_resolve_reason = resolve_exiftool_command(args.exiftool)
 
     # Shared, thread-safe state mutated from worker threads.
     state = {
@@ -444,22 +478,7 @@ def run(args):
         to preserve full metadata blocks (XMP/MPF/vendor APP segments).
         """
         if not exiftool_cmd and not args.allow_missing_exiftool:
-            with print_lock:
-                print("[ERROR] exiftool is required when saving images to detections/.")
-                if not DEFAULT_EXIFTOOL_DIR.exists():
-                    print(f"        Default directory missing: {DEFAULT_EXIFTOOL_DIR}")
-                    print("        Download exiftool and put it in this directory,")
-                    print(f"        URL: {EXIFTOOL_DOWNLOAD_URL}")
-                    print("        or pass --exiftool /path/to/exiftool(.exe).")
-                else:
-                    print(f"        exiftool runtime not available in default directory: {DEFAULT_EXIFTOOL_DIR}")
-                    if exiftool_resolve_reason:
-                        print(f"        Reason: {exiftool_resolve_reason}")
-                    print("        Download exiftool and place exiftool.exe there,")
-                    print(f"        URL: {EXIFTOOL_DOWNLOAD_URL}")
-                    print("        or pass --exiftool /path/to/exiftool(.exe).")
-                print("        To bypass (limited metadata copy), use --allow-missing-exiftool.")
-            sys.exit(1)
+            return
 
         dest_ext = dest_path.suffix.lower()
         is_jpeg = dest_ext in {".jpg", ".jpeg"}

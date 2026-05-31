@@ -42,21 +42,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
         epilog="""
 examples:
   # One dataset only (remap in copied output)
-  python remap_yolo_labels.py --input C:/data/yolo_a --output C:/data/yolo_out \\
+  python remap_yolo_labels/remap_yolo_labels.py --input C:/data/yolo_a --output C:/data/yolo_out \\
       --map 0:bolt_a:Bolt --map 0:bolt_b:Bolt
 
   # Merge two datasets with per-dataset mappings
-  python remap_yolo_labels.py --input C:/data/yolo_a --input C:/data/yolo_b \\
+  python remap_yolo_labels/remap_yolo_labels.py --input C:/data/yolo_a --input C:/data/yolo_b \\
       --output C:/data/yolo_merged \\
       --map 0:bolt_a:Bolt --map 0:bolt_b:Bolt --map "1:Rusty Screw:Screw"
 
   # Merge three datasets
-  python remap_yolo_labels.py --input C:/data/a --input C:/data/b --input C:/data/c \\
+  python remap_yolo_labels/remap_yolo_labels.py --input C:/data/a --input C:/data/b --input C:/data/c \\
       --output C:/data/merged \\
       --map 0:vague:Screw --map 2:bolt_c:Bolt
 
   # Merge many datasets (10 shown; repeat --input as needed)
-  python remap_yolo_labels.py \\
+  python remap_yolo_labels/remap_yolo_labels.py \\
       --input C:/data/d1 --input C:/data/d2 --input C:/data/d3 --input C:/data/d4 --input C:/data/d5 \\
       --input C:/data/d6 --input C:/data/d7 --input C:/data/d8 --input C:/data/d9 --input C:/data/d10 \\
       --output C:/data/merged_many \\
@@ -140,6 +140,56 @@ def read_data_yaml(dataset_root: Path) -> dict:
     return data
 
 
+def validate_label_content(text: str, label_path: Path, old_id_to_new_id: dict[int, int]) -> list[str]:
+    """Collect YOLO label errors without modifying files."""
+    if not text.strip():
+        return []
+
+    errors: list[str] = []
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        parts = stripped.split()
+        if len(parts) < 5:
+            errors.append(f"{label_path}:{line_no} malformed YOLO line: '{line}'")
+            continue
+
+        try:
+            old_id = int(parts[0])
+        except ValueError:
+            errors.append(f"{label_path}:{line_no} invalid class ID: '{parts[0]}'")
+            continue
+
+        if old_id not in old_id_to_new_id:
+            errors.append(
+                f"{label_path}:{line_no} class ID {old_id} not in remap table"
+            )
+    return errors
+
+
+def prescan_dataset_labels(dataset_root: Path, old_id_to_new_id: dict[int, int]) -> list[str]:
+    all_errors: list[str] = []
+    for split_name in ("train", "val", "test"):
+        labels_dir = dataset_root / split_name / "labels"
+        if not labels_dir.is_dir():
+            continue
+        for label_file in sorted(labels_dir.glob("*.txt")):
+            text = label_file.read_text(encoding="utf-8")
+            all_errors.extend(validate_label_content(text, label_file, old_id_to_new_id))
+    return all_errors
+
+
+def validate_input_dataset(dataset_root: Path, index: int) -> list[str]:
+    errors: list[str] = []
+    if not has_any_images(dataset_root, "train") and not has_any_images(dataset_root, "val"):
+        errors.append(
+            f"Input[{index}] has no images in train/ or val/ splits: {dataset_root}"
+        )
+    return errors
+
+
 def remap_label_content(text: str, label_path: Path, old_id_to_new_id: dict[int, int]) -> str:
     if not text.strip():
         return text
@@ -191,8 +241,6 @@ def write_updated_data_yaml(yaml_data: dict, dataset_root: Path, new_names: list
 
 
 def copy_dataset_tree(input_root: Path, output_root: Path) -> None:
-    if output_root.exists():
-        sys.exit(f"[ERROR] Output already exists: {output_root}")
     shutil.copytree(input_root, output_root)
 
 
@@ -306,9 +354,21 @@ def main() -> None:
     output_root = Path(args.output).expanduser().resolve()
     map_rules = parse_indexed_map_rules(args.map, dataset_count=len(input_roots))
 
+    if output_root.exists():
+        sys.exit(f"[ERROR] Output already exists: {output_root}")
+
+    all_errors: list[str] = []
     for idx, input_root in enumerate(input_roots):
         if not input_root.is_dir():
-            sys.exit(f"[ERROR] Input directory not found for --input index {idx}: {input_root}")
+            all_errors.append(f"Input directory not found for --input index {idx}: {input_root}")
+            continue
+        all_errors.extend(validate_input_dataset(input_root, idx))
+
+    if all_errors:
+        print("[ERROR] Validation failed:")
+        for err in all_errors:
+            print(f"  - {err}")
+        sys.exit(1)
 
     yaml_data_per_dataset = [read_data_yaml(root) for root in input_roots]
     old_names_per_dataset = [list(data["names"]) for data in yaml_data_per_dataset]
@@ -325,6 +385,15 @@ def main() -> None:
         print(f"[INFO] Input[{idx}] final : {remapped_names_per_dataset[idx]}")
     print(f"[INFO] Output dataset: {output_root}")
     print(f"[INFO] Final names   : {final_names}")
+
+    label_errors: list[str] = []
+    for idx, input_root in enumerate(input_roots):
+        label_errors.extend(prescan_dataset_labels(input_root, remap_tables[idx]))
+    if label_errors:
+        print("[ERROR] Label validation failed:")
+        for err in label_errors:
+            print(f"  - {err}")
+        sys.exit(1)
 
     copy_dataset_tree(input_roots[0], output_root)
 
