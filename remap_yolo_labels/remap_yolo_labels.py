@@ -240,6 +240,19 @@ def write_updated_data_yaml(yaml_data: dict, dataset_root: Path, new_names: list
     out_path.write_text(yaml.safe_dump(yaml_data, sort_keys=False), encoding="utf-8")
 
 
+def build_output_data_yaml(output_root: Path, final_names: list[str]) -> dict:
+    """Write canonical split paths relative to data.yaml at the dataset root."""
+    doc: dict = {
+        "train": "train/images",
+        "val": "val/images",
+        "nc": len(final_names),
+        "names": final_names,
+    }
+    if has_any_images(output_root, "test"):
+        doc["test"] = "test/images"
+    return doc
+
+
 def copy_dataset_tree(input_root: Path, output_root: Path) -> None:
     shutil.copytree(input_root, output_root)
 
@@ -411,11 +424,7 @@ def main() -> None:
         merged_counts[source_index] = per_split
         total_collisions += collisions
 
-    merged_yaml = dict(yaml_data_per_dataset[0])
-    if has_any_images(output_root, "test"):
-        merged_yaml["test"] = "../test/images"
-    else:
-        merged_yaml.pop("test", None)
+    merged_yaml = build_output_data_yaml(output_root, final_names)
     write_updated_data_yaml(merged_yaml, output_root, final_names)
 
     print("\n[SUMMARY]")

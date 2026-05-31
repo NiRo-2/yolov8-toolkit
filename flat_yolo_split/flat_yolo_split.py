@@ -370,9 +370,9 @@ def write_data_yaml(
     class_names: list[str],
     include_test: bool,
 ) -> Path:
-    lines = ["train: ../train/images", "val: ../val/images"]
+    lines = ["train: train/images", "val: val/images"]
     if include_test:
-        lines.append("test: ../test/images")
+        lines.append("test: test/images")
     lines.append(f"nc: {len(class_names)}")
     names_str = "[" + ", ".join(f"'{n}'" for n in class_names) + "]"
     lines.append(f"names: {names_str}")

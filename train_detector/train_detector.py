@@ -558,11 +558,22 @@ def resume_training(args):
 def resolve_yaml_split_path(yaml_path: Path, split_val: str) -> Path:
     """Resolve a train/val/test path from data.yaml relative to the yaml file."""
     split_path = Path(str(split_val).replace("\\", "/"))
-    if not split_path.is_absolute():
-        split_path = (yaml_path.parent / split_path).resolve()
-    else:
-        split_path = split_path.resolve()
-    return split_path
+    if split_path.is_absolute():
+        return split_path.resolve()
+
+    resolved = (yaml_path.parent / split_path).resolve()
+    if resolved.is_dir():
+        return resolved
+
+    # Legacy datasets: data.yaml at dataset root but paths like ../train/images
+    # (copied from older toolkit scripts). Strip leading .. and resolve again.
+    stripped = Path(*[part for part in split_path.parts if part != ".."])
+    if stripped != split_path:
+        fallback = (yaml_path.parent / stripped).resolve()
+        if fallback.is_dir():
+            return fallback
+
+    return resolved
 
 
 def validate_dataset(yaml_path: Path) -> None:
