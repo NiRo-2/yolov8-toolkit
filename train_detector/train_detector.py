@@ -419,8 +419,8 @@ def select_model_and_imgsz(image_count: int, vram_gb: float) -> tuple:
     │ Train imgs  │ VRAM     │ Model      │ imgsz  │ Reason                                   │
     ├─────────────┼──────────┼────────────┼────────┼──────────────────────────────────────────┤
     │ < 1,000     │ >= 16GB  │ yolo26m    │ 1280   │ m is light, 1280 fits, avoids overfit    │
-    │ 1,000-5,000 │ >= 16GB  │ yolo26l    │ 1024   │ l+1280 fits batch 4; 1024 keeps balance  │
-    │ > 5,000     │ >= 16GB  │ yolo26x    │ 1280   │ x+1280 fits at batch 8 with 16GB         │
+    │ 1,000-5,000 │ >= 16GB  │ yolo26l    │ 1024   │ l+1280 fits batch 8; 1024 kept for balance │
+    │ > 5,000     │ >= 16GB  │ yolo26x    │ 1280†  │ x+1280 needs batch>=8 (~17.6GB+); else 1024│
     ├─────────────┼──────────┼────────────┼────────┼──────────────────────────────────────────┤
     │ < 1,000     │ >= 12GB  │ yolo26m    │ 1024   │ small dataset, safe imgsz                │
     │ 1,000-5,000 │ >= 12GB  │ yolo26l    │ 1024   │ VRAM limit, keep imgsz safe              │
@@ -433,6 +433,11 @@ def select_model_and_imgsz(image_count: int, vram_gb: float) -> tuple:
     │ any         │ < 8GB    │ yolo26m    │ 640    │ low VRAM, minimal safe config            │
     │ any         │ None/CPU │ yolo26m    │ 640    │ CPU fallback                             │
     └─────────────┴──────────┴────────────┴────────┴──────────────────────────────────────────┘
+
+    † yolo26x@1280 only ships when it reaches MIN_BATCH (8) — that needs ~17.6GB+
+      (calc_max_batch_for_imgsz(vram_gb, "yolo26x.pt", 1280) >= 8). At the 16GB
+      threshold itself this yields batch 4, so imgsz falls back to 1024 (see the
+      "Final safety check" below, which enforces the same floor generically).
 
     Any value can be overridden via --model, --imgsz, --batch, --workers flags.
 

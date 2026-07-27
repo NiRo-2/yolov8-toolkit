@@ -354,7 +354,7 @@ python tile_yolo_dataset/tile_yolo_dataset.py \
     --output C:/data/dataset_tiled
 ```
 
-Defaults use 1024-pixel square tiles with 20% overlap and retain empty tiles at no more than 10% of the labelled-tile count. Output keeps the normal YOLO `train` / `val` (and optional `test`) structure and writes a new `data.yaml`.
+Defaults use 1024-pixel square tiles with 20% overlap. A box that gets clipped to a tile edge is kept only if at least 20% of its original (pre-clip) area remains; smaller remainders are dropped. Empty tiles (no surviving boxes) are capped at no more than 10% of each split's **total output tile count** — not 10% of the labelled-tile count, which works out to roughly 11% of labelled tiles. Output keeps the normal YOLO `train` / `val` (and optional `test`) structure and writes a new `data.yaml`.
 
 | Argument | Default | Description |
 |---|---|---|
@@ -419,8 +419,8 @@ The script detects your hardware and dataset size, then selects the best model, 
 | Train images | VRAM | Model | imgsz | Reason |
 |---|---|---|---|---|
 | < 1,000 | ≥ 16GB | yolo26m | 1280 | Small dataset — m avoids overfit |
-| 1,000–5,000 | ≥ 16GB | yolo26l | 1024 | l+1280 fits batch 4; 1024 keeps imgsz/batch balance |
-| > 5,000 | ≥ 16GB | yolo26x | 1280 | Large dataset justifies x |
+| 1,000–5,000 | ≥ 16GB | yolo26l | 1024 | l+1280 already fits batch 8; 1024 kept for imgsz/batch balance |
+| > 5,000 | ≥ 16GB | yolo26x | 1280† | Large dataset justifies x |
 | < 1,000 | ≥ 12GB | yolo26m | 1024 | Small dataset, safe imgsz |
 | 1,000–5,000 | ≥ 12GB | yolo26l | 1024 | VRAM limit, keep imgsz safe |
 | > 5,000 | ≥ 12GB | yolo26l | 1024 | l is safe ceiling at 12GB |
@@ -429,6 +429,8 @@ The script detects your hardware and dataset size, then selects the best model, 
 | > 5,000 | ≥ 8GB | yolo26l | 1024 | Dataset justifies l |
 | any | < 8GB | yolo26m | 640 | Low VRAM, minimal safe config |
 | any | CPU | yolo26m | 640 | CPU fallback |
+
+† `yolo26x`@1280 only ships when it reaches the batch-8 minimum, which needs roughly ≥ 17.6GB VRAM. At exactly 16GB, `yolo26x`@1280 only reaches batch 4, so the script falls back to `yolo26x`@1024 instead.
 
 **Key constraint:** imgsz is only raised when batch size stays ≥ 4. Fresh runs set `nbs=64` so YOLO gradient accumulation keeps the effective batch at 64 even when per-step batch is smaller. The `[Auto Config]` block prints `effective batch` when batch < 64.
 
