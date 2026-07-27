@@ -1,6 +1,6 @@
-# YOLOv8 Toolkit
+# YOLO Toolkit
 
-A clean, practical YOLOv8 toolkit for building datasets, training detectors, and running inference — **automatically configures itself** based on your GPU, RAM, and dataset size — no manual tuning needed.
+A clean, practical toolkit for building datasets, training detectors, and running inference with the latest Ultralytics YOLO (currently YOLO26) — **automatically configures itself** based on your GPU, RAM, and dataset size — no manual tuning needed.
 
 Built for real-world use: handles Windows paths, crash recovery, and scales from a laptop GPU to a workstation.
 
@@ -10,11 +10,11 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 
 | Script | What it does |
 |---|---|
-| `vlm_yolo_prep/vlm_yolo_prep.py` | Build a labelled YOLOv8 dataset from raw photos using a local VLM — no manual annotation needed |
-| `voc_to_yolo/voc_to_yolo.py` | Convert an existing Pascal VOC annotated dataset to YOLOv8 format |
+| `vlm_yolo_prep/vlm_yolo_prep.py` | Build a labelled YOLO dataset from raw photos using a local VLM — no manual annotation needed |
+| `voc_to_yolo/voc_to_yolo.py` | Convert an existing Pascal VOC annotated dataset to YOLO format |
 | `flat_yolo_split/flat_yolo_split.py` | Split a flat folder of YOLO images + labels into train/val and write `data.yaml` |
 | `remap_yolo_labels/remap_yolo_labels.py` | Copy an existing YOLO dataset to a new location and remap/merge class labels |
-| `train_detector/train_detector.py` | Train a YOLOv8 detector on any labelled dataset |
+| `train_detector/train_detector.py` | Train a YOLO26 detector on any labelled dataset |
 | `detect_images/detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
 | `ortho_tag_sidecar/ortho_tag_sidecar.py` | Verify detection JSON sidecars for Ortho-Tag / B3DM georeference keys (`Usage:` one `.json` path) |
 
@@ -33,7 +33,7 @@ vlm_yolo_prep/     voc_to_yolo/          flat_yolo_split/
      +-------------------+------------------------+
                      |
                      v
-          Labelled YOLOv8 dataset
+          Labelled YOLO dataset
           (train / val + data.yaml)
                      |
                      v
@@ -57,7 +57,7 @@ pip install ultralytics opencv-python psutil requests pillow pyyaml
 - Python 3.8+
 - PyTorch with CUDA (for GPU training) — install from [pytorch.org](https://pytorch.org/get-started/locally/)
 - [LM Studio](https://lmstudio.ai/) with a vision model loaded (for `vlm_yolo_prep.py` only)
-- Dataset in YOLOv8 format (e.g. exported from [Roboflow](https://roboflow.com))
+- Dataset in YOLO format (e.g. exported from [Roboflow](https://roboflow.com))
 
 ### Local outputs (gitignored)
 
@@ -75,13 +75,13 @@ Dataset-building scripts (`vlm_yolo_prep`, `voc_to_yolo`, `flat_yolo_split`, `re
 
 If you still have an old repo-root `runs/` folder from before this layout, move it to `train_detector/runs/` (or delete after copying).
 
-Pretrained Ultralytics backbones (`yolov8m.pt`, etc.) belong in `train_detector/weights/` — not the repo root. `train_detector.py` resolves and downloads them there automatically.
+Pretrained Ultralytics backbones (`yolo26m.pt`, etc.) belong in `train_detector/weights/` — not the repo root. `train_detector.py` resolves and downloads them there automatically.
 
 ---
 
 ## Step 1a — Build a Dataset from Raw Photos (`vlm_yolo_prep.py`)
 
-Sends each photo to a Vision-Language Model running locally in LM Studio, gets bounding box coordinates back, and writes a complete YOLOv8 dataset with no manual labelling.
+Sends each photo to a Vision-Language Model running locally in LM Studio, gets bounding box coordinates back, and writes a complete YOLO dataset with no manual labelling.
 
 ### Basic usage
 ```bash
@@ -161,7 +161,7 @@ names: ['screw']
 
 ## Step 1b — Convert an Existing VOC Dataset (`voc_to_yolo.py`)
 
-If you already have a dataset annotated in Pascal VOC format (XML files), this script converts it to YOLOv8 format in one command — no manual work needed.
+If you already have a dataset annotated in Pascal VOC format (XML files), this script converts it to YOLO format in one command — no manual work needed.
 
 ### Basic usage
 ```bash
@@ -196,7 +196,7 @@ input/
 | Argument | Default | Description |
 |---|---|---|
 | `--input` | required | Folder containing VOC images and XML annotation files |
-| `--output` | required | Output folder for the YOLOv8 dataset (created if absent, auto-versioned if not empty) |
+| `--output` | required | Output folder for the YOLO dataset (created if absent, auto-versioned if not empty) |
 | `--classes` | auto | Class names in order — controls ID assignment. Auto-discovered and sorted alphabetically if omitted |
 | `--train` | `0.70` | Train split ratio |
 | `--val` | `0.20` | Val split ratio (gets remainder when `--enable-test` is off) |
@@ -352,7 +352,7 @@ python train_detector/train_detector.py --input c:\Users\Me\Dataset\data.yaml --
 
 ### Override any auto-calculated value
 ```bash
-python train_detector/train_detector.py --input c:\Users\Me\Dataset\data.yaml --name my_detector_v1 --model yolov8x.pt --batch 8
+python train_detector/train_detector.py --input c:\Users\Me\Dataset\data.yaml --name my_detector_v1 --model yolo26x.pt --batch 8
 ```
 
 ### Resume a crashed or interrupted run
@@ -371,7 +371,7 @@ python train_detector/train_detector.py --resume
 | `--input` | required | Path to `data.yaml` file |
 | `--name` | `detector_v1` | Name for this training run |
 | `--resume` | off | Resume from last checkpoint |
-| `--model` | auto | Override model: `yolov8m/l/x.pt` |
+| `--model` | auto | Override model: `yolo26m/l/x.pt` |
 | `--imgsz` | auto | Override image size in pixels |
 | `--batch` | auto | Override batch size |
 | `--workers` | auto | Override dataloader worker count |
@@ -385,17 +385,17 @@ The script detects your hardware and dataset size, then selects the best model, 
 
 | Train images | VRAM | Model | imgsz | Reason |
 |---|---|---|---|---|
-| < 1,000 | ≥ 16GB | yolov8m | 1280 | Small dataset — m avoids overfit |
-| 1,000–5,000 | ≥ 16GB | yolov8l | 1024 | l+1280 fits batch 4; 1024 keeps imgsz/batch balance |
-| > 5,000 | ≥ 16GB | yolov8x | 1280 | Large dataset justifies x |
-| < 1,000 | ≥ 12GB | yolov8m | 1024 | Small dataset, safe imgsz |
-| 1,000–5,000 | ≥ 12GB | yolov8l | 1024 | VRAM limit, keep imgsz safe |
-| > 5,000 | ≥ 12GB | yolov8l | 1024 | l is safe ceiling at 12GB |
-| < 1,000 | ≥ 8GB | yolov8m | 640 | Low VRAM, keep it safe |
-| 1,000–5,000 | ≥ 8GB | yolov8m | 1024 | m is safe at 8GB + 1024 |
-| > 5,000 | ≥ 8GB | yolov8l | 1024 | Dataset justifies l |
-| any | < 8GB | yolov8m | 640 | Low VRAM, minimal safe config |
-| any | CPU | yolov8m | 640 | CPU fallback |
+| < 1,000 | ≥ 16GB | yolo26m | 1280 | Small dataset — m avoids overfit |
+| 1,000–5,000 | ≥ 16GB | yolo26l | 1024 | l+1280 fits batch 4; 1024 keeps imgsz/batch balance |
+| > 5,000 | ≥ 16GB | yolo26x | 1280 | Large dataset justifies x |
+| < 1,000 | ≥ 12GB | yolo26m | 1024 | Small dataset, safe imgsz |
+| 1,000–5,000 | ≥ 12GB | yolo26l | 1024 | VRAM limit, keep imgsz safe |
+| > 5,000 | ≥ 12GB | yolo26l | 1024 | l is safe ceiling at 12GB |
+| < 1,000 | ≥ 8GB | yolo26m | 640 | Low VRAM, keep it safe |
+| 1,000–5,000 | ≥ 8GB | yolo26m | 1024 | m is safe at 8GB + 1024 |
+| > 5,000 | ≥ 8GB | yolo26l | 1024 | Dataset justifies l |
+| any | < 8GB | yolo26m | 640 | Low VRAM, minimal safe config |
+| any | CPU | yolo26m | 640 | CPU fallback |
 
 **Key constraint:** imgsz is only raised when batch size stays ≥ 4. Fresh runs set `nbs=64` so YOLO gradient accumulation keeps the effective batch at 64 even when per-step batch is smaller. The `[Auto Config]` block prints `effective batch` when batch < 64.
 
@@ -405,7 +405,7 @@ Batch size is calculated from VRAM × 85% safety margin ÷ VRAM-per-image estima
 
 You can always override any single value while letting the rest auto-calculate:
 ```bash
-python train_detector/train_detector.py --input data.yaml --name run1 --model yolov8x.pt
+python train_detector/train_detector.py --input data.yaml --name run1 --model yolo26x.pt
 ```
 
 ### Output
@@ -590,7 +590,7 @@ The PT → ONNX + X-AnyLabeling export script lives in the separate [X-AnyLabel-
 ```bash
 # From a clone of X-AnyLabel-toolkit
 python scripts/yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py \
-    /path/to/yolov8-toolkit/train_detector/runs/detect/my_detector_v1/weights/best.pt
+    /path/to/yolov-toolkit/train_detector/runs/detect/my_detector_v1/weights/best.pt
 ```
 
 Default output: `scripts/yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling/`. See that repo for flags, batch templates, and [Load Custom Model](https://github.com/CVHub520/X-AnyLabeling/blob/main/docs/en/custom_model.md) usage.
@@ -599,7 +599,7 @@ Default output: `scripts/yolov8_pt_to_xanylabeling_onnx/<stem>_xanylabeling/`. S
 
 ## Dataset Format
 
-All scripts produce and consume datasets in **YOLOv8 format** with a `data.yaml` file:
+All scripts produce and consume datasets in **YOLO format** with a `data.yaml` file:
 
 ```yaml
 train: ../train/images

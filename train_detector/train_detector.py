@@ -1,5 +1,5 @@
 r"""
-YOLOv8 Object Detector Training Script
+YOLO26 Object Detector Training Script
 Auto-detects hardware, dataset size and image resolution to calculate optimal training config.
 
 Usage:
@@ -7,7 +7,7 @@ Usage:
     python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector_v1
 
     # Override any auto-calculated value
-    python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector_v1 --model yolov8x.pt --batch 8
+    python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector_v1 --model yolo26x.pt --batch 8
     python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector_v1 --imgsz 1024
 
     # Resume a crashed/interrupted run
@@ -20,7 +20,7 @@ Usage:
               works with Windows paths: c:\Users\Ni\Desktop\project\data.yaml
     --resume  resume from last checkpoint
     --name    run name to resume, or name for new run (default: detector_v1)
-    --model   override auto-selected model (yolov8m/l/x)
+    --model   override auto-selected model (yolo26m/l/x)
     --batch   override auto-calculated batch size
     --workers override auto-calculated worker count
     --imgsz   override auto-calculated image size in pixels
@@ -226,21 +226,21 @@ def detect_image_size(train_path: Path) -> int:
 
 # -- Auto Config ---------------------------------------------------------------
 
-# VRAM usage estimates per image at 1024px (GB)
-# Real-world measured values including optimizer + gradient + activation overhead
-# yolov8l at batch 16 + 1024px measured ~22GB on RTX 4080 Super (16GB) -> OOM
-# so estimates are set conservatively to stay within 85% of VRAM safely
+# VRAM usage estimates per image at 1024px (GB).
+# FLOPs-scaled from prior YOLOv8 measurements using Ultralytics published
+# detect FLOPs (m 68.2/78.9, l 86.4/165.2, x 193.9/257.8). Local probe cache
+# overrides these when present (see load_vram_estimates / probe_vram).
 VRAM_PER_IMAGE = {
-    "yolov8m.pt": 0.60,
-    "yolov8l.pt": 1.10,
-    "yolov8x.pt": 1.60,
+    "yolo26m.pt": 0.52,
+    "yolo26l.pt": 0.58,
+    "yolo26x.pt": 1.20,
 }
 
 MIN_BATCH = 8  # minimum viable batch size for stable training
 
 
 def snap_to_standard(size: int) -> int:
-    """Snap a raw pixel size to the nearest standard YOLOv8 imgsz."""
+    """Snap a raw pixel size to the nearest standard YOLO imgsz."""
     standards = [320, 416, 512, 640, 768, 1024, 1280, 1536]
     return min(standards, key=lambda s: abs(s - size))
 
@@ -271,20 +271,20 @@ def select_model_and_imgsz(image_count: int, vram_gb: float) -> tuple:
     ┌─────────────┬──────────┬────────────┬────────┬──────────────────────────────────────────┐
     │ Train imgs  │ VRAM     │ Model      │ imgsz  │ Reason                                   │
     ├─────────────┼──────────┼────────────┼────────┼──────────────────────────────────────────┤
-    │ < 1,000     │ >= 16GB  │ yolov8m    │ 1280   │ m is light, 1280 fits, avoids overfit    │
-    │ 1,000-5,000 │ >= 16GB  │ yolov8l    │ 1024   │ l+1280 fits batch 4; 1024 keeps balance  │
-    │ > 5,000     │ >= 16GB  │ yolov8x    │ 1280   │ x+1280 fits at batch 8 with 16GB         │
+    │ < 1,000     │ >= 16GB  │ yolo26m    │ 1280   │ m is light, 1280 fits, avoids overfit    │
+    │ 1,000-5,000 │ >= 16GB  │ yolo26l    │ 1024   │ l+1280 fits batch 4; 1024 keeps balance  │
+    │ > 5,000     │ >= 16GB  │ yolo26x    │ 1280   │ x+1280 fits at batch 8 with 16GB         │
     ├─────────────┼──────────┼────────────┼────────┼──────────────────────────────────────────┤
-    │ < 1,000     │ >= 12GB  │ yolov8m    │ 1024   │ small dataset, safe imgsz                │
-    │ 1,000-5,000 │ >= 12GB  │ yolov8l    │ 1024   │ VRAM limit, keep imgsz safe              │
-    │ > 5,000     │ >= 12GB  │ yolov8l    │ 1024   │ l is safe ceiling at 12GB                │
+    │ < 1,000     │ >= 12GB  │ yolo26m    │ 1024   │ small dataset, safe imgsz                │
+    │ 1,000-5,000 │ >= 12GB  │ yolo26l    │ 1024   │ VRAM limit, keep imgsz safe              │
+    │ > 5,000     │ >= 12GB  │ yolo26l    │ 1024   │ l is safe ceiling at 12GB                │
     ├─────────────┼──────────┼────────────┼────────┼──────────────────────────────────────────┤
-    │ < 1,000     │ >= 8GB   │ yolov8m    │ 640    │ low VRAM, keep it safe                   │
-    │ 1,000-5,000 │ >= 8GB   │ yolov8m    │ 1024   │ m is safe at 8GB + 1024                  │
-    │ > 5,000     │ >= 8GB   │ yolov8l    │ 1024   │ dataset justifies l at safe imgsz        │
+    │ < 1,000     │ >= 8GB   │ yolo26m    │ 640    │ low VRAM, keep it safe                   │
+    │ 1,000-5,000 │ >= 8GB   │ yolo26m    │ 1024   │ m is safe at 8GB + 1024                  │
+    │ > 5,000     │ >= 8GB   │ yolo26l    │ 1024   │ dataset justifies l at safe imgsz        │
     ├─────────────┼──────────┼────────────┼────────┼──────────────────────────────────────────┤
-    │ any         │ < 8GB    │ yolov8m    │ 640    │ low VRAM, minimal safe config            │
-    │ any         │ None/CPU │ yolov8m    │ 640    │ CPU fallback                             │
+    │ any         │ < 8GB    │ yolo26m    │ 640    │ low VRAM, minimal safe config            │
+    │ any         │ None/CPU │ yolo26m    │ 640    │ CPU fallback                             │
     └─────────────┴──────────┴────────────┴────────┴──────────────────────────────────────────┘
 
     Any value can be overridden via --model, --imgsz, --batch, --workers flags.
@@ -292,33 +292,33 @@ def select_model_and_imgsz(image_count: int, vram_gb: float) -> tuple:
     Returns: (model, imgsz)
     """
     if vram_gb is None:
-        model, imgsz = "yolov8m.pt", 640
+        model, imgsz = "yolo26m.pt", 640
     elif vram_gb >= 16:
         if image_count < 1000:
-            model, imgsz = "yolov8m.pt", 1280
+            model, imgsz = "yolo26m.pt", 1280
         elif image_count < 5000:
-            model, imgsz = "yolov8l.pt", 1024
+            model, imgsz = "yolo26l.pt", 1024
         else:
-            if calc_max_batch_for_imgsz(vram_gb, "yolov8x.pt", 1280) >= MIN_BATCH:
-                model, imgsz = "yolov8x.pt", 1280
+            if calc_max_batch_for_imgsz(vram_gb, "yolo26x.pt", 1280) >= MIN_BATCH:
+                model, imgsz = "yolo26x.pt", 1280
             else:
-                model, imgsz = "yolov8x.pt", 1024
+                model, imgsz = "yolo26x.pt", 1024
     elif vram_gb >= 12:
         if image_count < 1000:
-            model, imgsz = "yolov8m.pt", 1024
+            model, imgsz = "yolo26m.pt", 1024
         elif image_count < 5000:
-            model, imgsz = "yolov8l.pt", 1024
+            model, imgsz = "yolo26l.pt", 1024
         else:
-            model, imgsz = "yolov8l.pt", 1024
+            model, imgsz = "yolo26l.pt", 1024
     elif vram_gb >= 8:
         if image_count < 1000:
-            model, imgsz = "yolov8m.pt", 640
+            model, imgsz = "yolo26m.pt", 640
         elif image_count < 5000:
-            model, imgsz = "yolov8m.pt", 1024
+            model, imgsz = "yolo26m.pt", 1024
         else:
-            model, imgsz = "yolov8l.pt", 1024
+            model, imgsz = "yolo26l.pt", 1024
     else:
-        model, imgsz = "yolov8m.pt", 640
+        model, imgsz = "yolo26m.pt", 640
 
     # Final safety check: if chosen imgsz causes batch < MIN_BATCH, drop imgsz
     if vram_gb and calc_max_batch_for_imgsz(vram_gb, model, imgsz) < MIN_BATCH:
@@ -452,7 +452,7 @@ def print_auto_config(config: dict, args):
 # -- Argument Parsing ----------------------------------------------------------
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a YOLOv8 object detector")
+    parser = argparse.ArgumentParser(description="Train a YOLO26 object detector")
 
     parser.add_argument(
         "--input", type=str, default=None,
@@ -464,7 +464,7 @@ def parse_args():
     )
     parser.add_argument(
         "--model", type=str, default=None,
-        help="Override auto-selected model (e.g. yolov8x.pt)"
+        help="Override auto-selected model (e.g. yolo26x.pt)"
     )
     parser.add_argument(
         "--epochs", type=int, default=600,

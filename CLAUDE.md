@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-A YOLOv8 toolkit for building datasets, training detectors, and running inference. The pipeline flows: raw photos or VOC annotations → labelled YOLOv8 dataset → training → inference.
+A YOLO Toolkit for building datasets, training detectors, and running inference with the latest Ultralytics YOLO (currently YOLO26). The pipeline flows: raw photos or VOC annotations → labelled YOLO dataset → training → inference.
 
 PT → ONNX + X-AnyLabeling export lives in the separate [X-AnyLabel-toolkit](https://github.com/NiRo-2/X-AnyLabel-toolkit) repo (`scripts/yolov8_pt_to_xanylabeling_onnx/`).
 
@@ -12,11 +12,11 @@ PT → ONNX + X-AnyLabeling export lives in the separate [X-AnyLabel-toolkit](ht
 
 | Script | Purpose |
 |---|---|
-| `vlm_yolo_prep/vlm_yolo_prep.py` | Auto-label raw photos using a local VLM (LM Studio) → YOLOv8 dataset |
-| `voc_to_yolo/voc_to_yolo.py` | Convert existing Pascal VOC XML annotations to YOLOv8 format |
+| `vlm_yolo_prep/vlm_yolo_prep.py` | Auto-label raw photos using a local VLM (LM Studio) → YOLO dataset |
+| `voc_to_yolo/voc_to_yolo.py` | Convert existing Pascal VOC XML annotations to YOLO format |
 | `flat_yolo_split/flat_yolo_split.py` | Split flat folder of YOLO images + labels into train/val (+ optional test) and write `data.yaml` |
 | `remap_yolo_labels/remap_yolo_labels.py` | Remap classes and merge one or more YOLO datasets into a new output dataset |
-| `train_detector/train_detector.py` | Train YOLOv8 detector with auto-configured hardware-aware hyperparameters |
+| `train_detector/train_detector.py` | Train YOLO26 detector with auto-configured hardware-aware hyperparameters |
 | `detect_images/detect_images.py` | Run trained model on image folder, draw boxes, export JSON detections |
 | `ortho_tag_sidecar/ortho_tag_sidecar.py` | Pillow GPS → ExifTool `-G1`-style metadata helpers; CLI verifies one sidecar JSON for B3DM |
 | `exiftool/_Run_exiftool.bat` | Windows helper to dump full image metadata to `./exiftool/outputs/` |
@@ -85,7 +85,7 @@ python scripts/yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py 
 
 All scripts share common patterns:
 - `normalize_path()` — handles Windows/Unix path conversion
-- YOLOv8 dataset format: `train/val/[test]/images/` + `labels/` + `data.yaml`
+- YOLO dataset format: `train/val/[test]/images/` + `labels/` + `data.yaml`
 - `data.yaml` structure: `train`, `val`, `test` (optional), `nc`, `names`
 - Class IDs assigned in order (first listed = 0, second = 1, etc.)
 

@@ -1,7 +1,7 @@
 r"""
-YOLOv8 Image Detection Script
+YOLO Image Detection Script
 
-Runs a trained YOLOv8 model over a directory of images,
+Runs a trained YOLO model over a directory of images,
 draws bounding boxes with confidence scores, and saves results.
 
 Usage:
@@ -123,7 +123,7 @@ def flat_output_name(img_path: Path, images_root: Path) -> str:
 # -- Argument Parsing ----------------------------------------------------------
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Run YOLOv8 detection on a folder of images")
+    parser = argparse.ArgumentParser(description="Run YOLO detection on a folder of images")
 
     parser.add_argument(
         "--images", type=str, required=True,
