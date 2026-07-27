@@ -1,12 +1,12 @@
 """
 remap_yolo_labels.py
 ================================================================================
-YOLOv8 Dataset Remapper and Multi-Dataset Merger
+YOLO Dataset Remapper and Multi-Dataset Merger
 ================================================================================
 
 WHAT THIS SCRIPT DOES
 ---------------------
-Remap class names/IDs for one or more YOLOv8 datasets and merge them into one
+Remap class names/IDs for one or more YOLO datasets and merge them into one
 new output dataset.
 
 Supports:
@@ -37,7 +37,7 @@ import yaml
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="remap_yolo_labels.py",
-        description="Remap YOLOv8 class names/IDs in an existing dataset.",
+        description="Remap YOLO class names/IDs in an existing dataset.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:

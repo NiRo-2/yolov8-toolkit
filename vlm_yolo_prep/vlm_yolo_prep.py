@@ -1,7 +1,7 @@
 """
 vlm_yolo_prep.py
 ================================================================================
-VLM-Powered YOLOv8 Dataset Preparation Tool
+VLM-Powered YOLO Dataset Preparation Tool
 ================================================================================
 
 WHAT THIS SCRIPT DOES
@@ -21,9 +21,9 @@ This script does it automatically:
   - Converts those coordinates into YOLO label format and saves a .txt file
     next to each image.
   - Splits everything into train / val / test folders and writes a data.yaml
-    so you can immediately start training with YOLOv8.
+    so you can immediately start training with YOLO.
 
-The result is a complete, ready-to-train YOLOv8 dataset with no manual labelling.
+The result is a complete, ready-to-train YOLO dataset with no manual labelling.
 
 WHAT IT IS MEANT FOR
 ---------------------
@@ -56,7 +56,7 @@ WHERE IT FITS IN THE PIPELINE
   (train / val / test + data.yaml)
        |
        v
-  yolo train model=yolov8m.pt data=data.yaml
+  yolo train model=yolo26m.pt data=data.yaml
        |
        v
   Trained .pt model ready for inference
@@ -212,7 +212,7 @@ def probe_lm_studio(api_url: str, timeout: float) -> None:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vlm_yolo_prep.py",
-        description="Build a YOLOv8 dataset from raw images using an LM Studio VLM.",
+        description="Build a YOLO dataset from raw images using an LM Studio VLM.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
@@ -1108,7 +1108,7 @@ def run_pipeline(args: argparse.Namespace, class_mapping: dict[str, int]) -> Non
     else:
         split_str = f"train {args.train:.0%} / val {1-args.train:.0%}  (no test split)"
     print(f"\n{'='*64}")
-    print(f"  VLM YOLOv8 Dataset Prep")
+    print(f"  VLM YOLO Dataset Prep")
     print(f"{'='*64}")
     print(f"  Input dir      : {input_dir}")
     print(f"  Output dir     : {output_dir}")
@@ -1202,7 +1202,7 @@ def run_pipeline(args: argparse.Namespace, class_mapping: dict[str, int]) -> Non
         print(f"  Preview dir  : {preview_dir}")
         print(f"                 Open this folder to check detection quality.")
     print(f"\n  To start training:")
-    print(f'    yolo train model=yolov8m.pt data="{yaml_path}" epochs=100 imgsz=1280')
+    print(f'    yolo train model=yolo26m.pt data="{yaml_path}" epochs=100 imgsz=1280')
     print(f"{'='*64}\n")
 
 

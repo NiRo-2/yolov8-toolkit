@@ -1,7 +1,7 @@
 """
 flat_yolo_split.py
 ================================================================================
-Flat YOLO Folder to YOLOv8 Train/Val Dataset Splitter
+Flat YOLO Folder to YOLO Train/Val Dataset Splitter
 ================================================================================
 
 WHAT THIS SCRIPT DOES
@@ -48,7 +48,7 @@ ANONYMOUS_CLASS_NAMES = frozenset({
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="flat_yolo_split.py",
-        description="Split a flat YOLO-labelled folder into train/val for YOLOv8 training.",
+        description="Split a flat YOLO-labelled folder into train/val for YOLO training.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
@@ -66,7 +66,7 @@ examples:
         "--output", "-o",
         required=True,
         metavar="DIR",
-        help="Output folder for the YOLOv8 dataset (created if absent).",
+        help="Output folder for the YOLO dataset (created if absent).",
     )
     parser.add_argument(
         "--train",
@@ -434,7 +434,7 @@ def run(args: argparse.Namespace) -> None:
         split_str = f"train {args.train:.0%} / val {1 - args.train:.0%}  (no test split)"
 
     print(f"\n{'='*64}")
-    print("  Flat YOLO -> YOLOv8 Dataset Splitter")
+    print("  Flat YOLO -> YOLO Dataset Splitter")
     print(f"{'='*64}")
     print(f"  Input dir    : {input_dir}")
     print(f"  Output dir   : {output_dir}")

@@ -1,5 +1,6 @@
-# YOLOv8 training and inference
-ultralytics
+# Ultralytics YOLO (currently YOLO26; introduced in ultralytics 8.4.0)
+# Keep updated with: pip install -U ultralytics
+ultralytics>=8.4.0
 opencv-python
 psutil
 

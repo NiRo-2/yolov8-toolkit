@@ -1,12 +1,12 @@
 """
 voc_to_yolo.py
 ================================================================================
-Pascal VOC to YOLOv8 Dataset Converter
+Pascal VOC to YOLO Dataset Converter
 ================================================================================
 
 WHAT THIS SCRIPT DOES
 ----------------------
-Converts a Pascal VOC annotated dataset into a YOLOv8-ready folder structure
+Converts a Pascal VOC annotated dataset into a YOLO-ready folder structure
 with a data.yaml file, ready to pass directly to train_detector.py.
 
 VOC format uses one XML file per image containing bounding boxes in absolute
@@ -52,7 +52,7 @@ USAGE
 
 REQUIRED ARGS
   --input       Folder containing VOC images + XML annotations
-  --output      Output folder for the YOLOv8 dataset (created if absent)
+  --output      Output folder for the YOLO dataset (created if absent)
 
 OPTIONAL ARGS
   --classes     Explicit class names in order (determines class IDs).
@@ -80,7 +80,7 @@ from pathlib import Path
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="voc_to_yolo.py",
-        description="Convert Pascal VOC annotations to YOLOv8 dataset format.",
+        description="Convert Pascal VOC annotations to YOLO dataset format.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
@@ -107,7 +107,7 @@ examples:
         "--output", "-o",
         required=True,
         metavar="DIR",
-        help="Output folder for the YOLOv8 dataset (created if absent).",
+        help="Output folder for the YOLO dataset (created if absent).",
     )
     parser.add_argument(
         "--classes",
@@ -439,7 +439,7 @@ def convert(args: argparse.Namespace) -> None:
         split_str = f"train {args.train:.0%} / val {1-args.train:.0%}  (no test split)"
 
     print(f"\n{'='*64}")
-    print(f"  VOC -> YOLOv8 Converter")
+    print(f"  VOC -> YOLO Converter")
     print(f"{'='*64}")
     print(f"  Input dir    : {input_dir}")
     print(f"  Output dir   : {output_dir}")
@@ -505,7 +505,7 @@ def convert(args: argparse.Namespace) -> None:
     print(f"  Total boxes  : {total_boxes}")
     print(f"\n  data.yaml    : {yaml_path}")
     print(f"\n  To start training:")
-    print(f'    yolo train model=yolov8m.pt data="{yaml_path}" epochs=100 imgsz=1280')
+    print(f'    yolo train model=yolo26m.pt data="{yaml_path}" epochs=100 imgsz=1280')
     print(f"{'='*64}\n")
 
 

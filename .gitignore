@@ -204,6 +204,9 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Cursor local project state (do not commit)
+.cursor/
+
 # Claude Code
 #  settings.local.json contains personal/local overrides and should not be shared
 .claude/settings.local.json
@@ -215,6 +218,7 @@ __marimo__/
 
 # Script-local generated outputs (see README "Local outputs")
 train_detector/runs/
+# includes vram_estimates.json probe cache
 train_detector/weights/
 detect_images/detections/
 
@@ -238,3 +242,7 @@ exiftool/
 *_remapped/
 *_merged/
 *_renamed/
+
+# Internal SDD scratch (briefs/reports/reviews) — never part of the public repo.
+# docs/superpowers/ (specs/plans) stays tracked; only the scratch working dir is ignored.
+.superpowers/sdd/
