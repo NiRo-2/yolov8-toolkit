@@ -14,8 +14,9 @@ Built for real-world use: handles Windows paths, crash recovery, and scales from
 | `voc_to_yolo/voc_to_yolo.py` | Convert an existing Pascal VOC annotated dataset to YOLO format |
 | `flat_yolo_split/flat_yolo_split.py` | Split a flat folder of YOLO images + labels into train/val and write `data.yaml` |
 | `remap_yolo_labels/remap_yolo_labels.py` | Copy an existing YOLO dataset to a new location and remap/merge class labels |
+| `tile_yolo_dataset/tile_yolo_dataset.py` | Tile a YOLO dataset into overlapping windows for small-object training |
 | `train_detector/train_detector.py` | Train a YOLO26 detector on any labelled dataset |
-| `detect_images/detect_images.py` | Run a trained model on a folder of images, draw boxes + confidence |
+| `detect_images/detect_images.py` | Run a trained model on a folder of images; tiled inference is on by default |
 | `ortho_tag_sidecar/ortho_tag_sidecar.py` | Verify detection JSON sidecars for Ortho-Tag / B3DM georeference keys (`Usage:` one `.json` path) |
 
 **Related:** [X-AnyLabel-toolkit](https://github.com/NiRo-2/X-AnyLabel-toolkit) — PT → ONNX + X-AnyLabeling `config.yaml` export (`scripts/yolov8_pt_to_xanylabeling_onnx/`).
@@ -37,11 +38,15 @@ vlm_yolo_prep/     voc_to_yolo/          flat_yolo_split/
           (train / val + data.yaml)
                      |
                      v
+      tile_yolo_dataset/ (recommended
+        for small-object training)
+                     |
+                     v
           train_detector/
                      |
                      v
               detect_images/
-                (inference)
+          (tiled inference by default)
 ```
 
 For X-AnyLabeling ONNX export, use the companion repo [X-AnyLabel-toolkit](https://github.com/NiRo-2/X-AnyLabel-toolkit).
@@ -51,10 +56,11 @@ For X-AnyLabeling ONNX export, use the companion repo [X-AnyLabel-toolkit](https
 ## Requirements
 
 ```bash
-pip install ultralytics opencv-python psutil requests pillow pyyaml
+pip install -r requirements.txt
 ```
 
 - Python 3.8+
+- `ultralytics>=8.4.0` (currently YOLO26); update with `pip install -U ultralytics`
 - PyTorch with CUDA (for GPU training) — install from [pytorch.org](https://pytorch.org/get-started/locally/)
 - [LM Studio](https://lmstudio.ai/) with a vision model loaded (for `vlm_yolo_prep.py` only)
 - Dataset in YOLO format (e.g. exported from [Roboflow](https://roboflow.com))
@@ -338,6 +344,32 @@ Use `remap_yolo_labels/_Run_remap_yolo_labels_template.bat`:
 
 ---
 
+## Recommended Training Prep — Tile a YOLO Dataset (`tile_yolo_dataset.py`)
+
+For small objects in high-resolution images, tile the completed YOLO dataset before training. This creates a new dataset with overlapping image windows and clipped YOLO labels; the source dataset is not modified.
+
+```bash
+python tile_yolo_dataset/tile_yolo_dataset.py \
+    --input C:/data/dataset \
+    --output C:/data/dataset_tiled
+```
+
+Defaults use 1024-pixel square tiles with 20% overlap and retain empty tiles at no more than 10% of the labelled-tile count. Output keeps the normal YOLO `train` / `val` (and optional `test`) structure and writes a new `data.yaml`.
+
+| Argument | Default | Description |
+|---|---|---|
+| `--input`, `-i` | required | YOLO dataset root or its `data.yaml` |
+| `--output`, `-o` | required | Output tiled dataset directory (auto-versioned if non-empty) |
+| `--imgsz` | `1024` | Square tile size in pixels |
+| `--overlap` | `0.2` | Tile overlap fraction |
+| `--empty-frac` | `0.10` | Maximum output fraction of empty tiles |
+| `--seed` | `42` | Empty-tile sampling seed |
+| `--manifest` | off | Write `tiles_manifest.json` with tile provenance |
+
+Train with the generated `C:/data/dataset_tiled/data.yaml`.
+
+---
+
 ## Step 2 — Train (`train_detector.py`)
 
 ### Basic usage
@@ -375,9 +407,10 @@ python train_detector/train_detector.py --resume
 | `--imgsz` | auto | Override image size in pixels |
 | `--batch` | auto | Override batch size |
 | `--workers` | auto | Override dataloader worker count |
-| `--epochs` | `300` | Max training epochs |
+| `--epochs` | `600` | Max training epochs |
 | `--patience` | `100` | Early stopping patience |
 | `--device` | `0` | `0` for GPU, `cpu` for CPU |
+| `--probe-vram` | off | Measure or refresh local VRAM estimates; exits when `--input` is omitted |
 
 ### Auto-configuration
 
@@ -402,6 +435,22 @@ The script detects your hardware and dataset size, then selects the best model, 
 Batch size is calculated from VRAM × 85% safety margin ÷ VRAM-per-image estimate, clamped to powers of 2 (4, 8, 16, 32, 64). Worker count is calculated from CPU cores and RAM, capped at 8 for Windows stability.
 
 **Augmentation** (fresh runs only; not applied on `--resume`): `degrees=180`, `flipud=0.5`, `copy_paste=0.3`, `mixup=0.15`, `multi_scale=0.5` (when VRAM supports batch ≥ 4 under peak multi-scale sizing; otherwise `0.0`), `close_mosaic=60`, `cos_lr=True`, `nbs=64`. The script prints `[Auto Config]` (including effective batch when batch < 64) and an `[Augmentation Config]` block before training starts.
+
+### VRAM probe
+
+On CUDA, training automatically measures any missing model VRAM estimates before calculating a batch size. The estimates are cached locally at `train_detector/weights/vram_estimates.json` (gitignored); when probing is unavailable or fails, the toolkit uses built-in FLOPs-scaled estimates instead.
+
+Refresh the local measurements without starting a training run:
+
+```bash
+python train_detector/train_detector.py --probe-vram
+```
+
+To probe only a selected model, supply `--model`:
+
+```bash
+python train_detector/train_detector.py --probe-vram --model yolo26l.pt
+```
 
 You can always override any single value while letting the rest auto-calculate:
 ```bash
@@ -473,6 +522,22 @@ Disable with `--no-recursive` to scan only the top-level of `--images`:
 
 ```bash
 python detect_images/detect_images.py --images /path/to/images --model best.pt --no-recursive
+```
+
+### Tiled inference (default ON)
+
+Images are split into overlapping tiles before inference by default. Images that already fit in one tile are processed once. Tile detections are translated back to full-image coordinates and merged with class-wise NMS, which improves detection of small objects in high-resolution images.
+
+```bash
+# Default tiled inference: 1024px tiles, 20% overlap, NMS IoU 0.5
+python detect_images/detect_images.py --images /path/to/images --model best.pt
+
+# Tune tiling for your image scale
+python detect_images/detect_images.py --images /path/to/images --model best.pt \
+    --tile-imgsz 1280 --tile-overlap 0.2 --tile-iou 0.5
+
+# Restore legacy whole-image inference
+python detect_images/detect_images.py --images /path/to/images --model best.pt --no-tiles
 ```
 
 ### Performance: batched inference + threaded post-processing (default ON)
@@ -562,6 +627,11 @@ python detect_images/detect_images.py --images ... --model ... --verify-b3dm
 | `--no-recursive` | `False` | Only scan the top-level of `--images` |
 | `--workers` | `auto` | Worker threads for post-inference I/O (JSON + ExifTool + image save). `auto` = `min(8, os.cpu_count())`; pass an integer or `1` to disable threading |
 | `--batch` | `auto` | GPU inference batch size. `auto` = `8` if CUDA is available, else `1`; pass an integer or `1` to disable batching |
+| `--tiles` | `True` | Tile images before inference; tile detections are merged with class-wise NMS |
+| `--no-tiles` | `False` | Disable tiled inference and process each whole image |
+| `--tile-imgsz` | `1024` | Tile size in pixels |
+| `--tile-overlap` | `0.2` | Overlap fraction between adjacent tiles |
+| `--tile-iou` | `0.5` | NMS IoU threshold for merging tiled detections |
 
 Annotated images are saved to `detect_images/detections/<input_folder_name>/` when enabled — originals are never modified.
 By default, full metadata transfer requires ExifTool when an output image is actually being saved.
