@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,14 +28,14 @@ from tile_geometry import (
 
 
 @dataclass
-class TileRecord:
+class TileMeta:
+    """Lightweight tile provenance — no pixel data, safe to keep for a whole split."""
     split: str
     source: Path
     x1: int
     y1: int
     x2: int
     y2: int
-    image: object
     labels: list[str]
 
 
@@ -134,20 +135,74 @@ def parse_labels(label_path: Path, width: int, height: int) -> list[tuple[int, f
     return boxes
 
 
-def collect_tiles(split: str, images_dir: Path, dataset_root: Path, args: argparse.Namespace) -> tuple[list[TileRecord], list[TileRecord]]:
+def write_tile(
+    split: str,
+    source: Path,
+    x1: int,
+    y1: int,
+    x2: int,
+    y2: int,
+    labels: list[str],
+    crop,
+    output_dir: Path,
+) -> dict:
+    """Write one tile crop + label file to disk and return its manifest entry.
+
+    `crop` is expected to be a short-lived numpy view/copy of a single decoded
+    source image; callers must not retain crops beyond this call.
+    """
+    extension = source.suffix
+    out_name = f"{source.stem}_x{x1}_y{y1}{extension}"
+    images_out = output_dir / split / "images"
+    labels_out = output_dir / split / "labels"
+    images_out.mkdir(parents=True, exist_ok=True)
+    labels_out.mkdir(parents=True, exist_ok=True)
+    image_out = images_out / out_name
+    if not cv2.imwrite(str(image_out), crop):
+        raise OSError(f"Could not write tile image: {image_out}")
+    (labels_out / f"{Path(out_name).stem}.txt").write_text(
+        "\n".join(labels) + ("\n" if labels else ""), encoding="utf-8"
+    )
+    return {
+        "split": split,
+        "source": str(source),
+        "tile_x1": x1,
+        "tile_y1": y1,
+        "tile_x2": x2,
+        "tile_y2": y2,
+        "out_name": out_name,
+        "n_labels": len(labels),
+    }
+
+
+def process_split(
+    split: str, images_dir: Path, dataset_root: Path, args: argparse.Namespace, output_dir: Path
+) -> tuple[int, int, list[dict]]:
+    """Tile one split, streaming per source image so memory stays O(one image).
+
+    Pass 1 decodes each source image once, writes labelled tiles to disk
+    immediately, and only keeps lightweight `TileMeta` (coordinates, no pixel
+    data) for empty-tile candidates. Pass 2 re-decodes only the source images
+    that contributed a *selected* empty tile (after capping by --empty-frac)
+    and writes just those crops. Peak memory is therefore bounded by one
+    decoded source image (plus its tiles) at a time, not the whole split.
+    """
     labels_dir = images_dir.parent / "labels"
     if images_dir.name != "images":
         print(f"[WARNING] Expected images directory named 'images': {images_dir}")
     if not images_dir.is_dir():
         print(f"[WARNING] Split '{split}' image directory does not exist: {images_dir}")
-        return [], []
+        return 0, 0, []
 
-    labelled: list[TileRecord] = []
-    empty: list[TileRecord] = []
     image_paths = sorted(
         path for path in images_dir.iterdir()
         if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
     )
+
+    manifest: list[dict] = []
+    labelled_count = 0
+    empty_meta: list[TileMeta] = []
+
     for image_path in image_paths:
         image = cv2.imread(str(image_path))
         if image is None:
@@ -166,34 +221,44 @@ def collect_tiles(split: str, images_dir: Path, dataset_root: Path, args: argpar
                 clipped = clip_box_to_tile(bx1, by1, bx2, by2, x1, y1, x2, y2)
                 if clipped is not None and keep_clipped_box((bx2 - bx1) * (by2 - by1), clipped):
                     tile_labels.append(xyxy_to_yolo_line(cls_id, *clipped, x2 - x1, y2 - y1))
-            record = TileRecord(split, image_path, x1, y1, x2, y2, image[y1:y2, x1:x2], tile_labels)
-            (labelled if tile_labels else empty).append(record)
-    return labelled, empty
+            if tile_labels:
+                try:
+                    manifest.append(
+                        write_tile(split, image_path, x1, y1, x2, y2, tile_labels, image[y1:y2, x1:x2], output_dir)
+                    )
+                    labelled_count += 1
+                except OSError as exc:
+                    print(f"[WARNING] Skipping unwritable tile from {image_path.name}: {exc}")
+            else:
+                empty_meta.append(TileMeta(split, image_path, x1, y1, x2, y2, tile_labels))
+        # `image` (the decoded source array) is dropped here; only cheap
+        # coordinate metadata for empty candidates survives past this loop.
 
+    selected_indices = select_empty_tiles(labelled_count, list(range(len(empty_meta))), args.empty_frac, args.seed)
+    empty_written = 0
+    if selected_indices:
+        indices_by_source: dict[Path, list[int]] = defaultdict(list)
+        for idx in selected_indices:
+            indices_by_source[empty_meta[idx].source].append(idx)
+        for source_path, indices in indices_by_source.items():
+            image = cv2.imread(str(source_path))
+            if image is None:
+                print(f"[WARNING] Skipping corrupt image on empty-tile pass: {source_path}")
+                continue
+            for idx in indices:
+                meta = empty_meta[idx]
+                try:
+                    manifest.append(
+                        write_tile(
+                            meta.split, meta.source, meta.x1, meta.y1, meta.x2, meta.y2, meta.labels,
+                            image[meta.y1:meta.y2, meta.x1:meta.x2], output_dir,
+                        )
+                    )
+                    empty_written += 1
+                except OSError as exc:
+                    print(f"[WARNING] Skipping unwritable tile from {meta.source.name}: {exc}")
 
-def write_record(record: TileRecord, output_dir: Path) -> dict:
-    extension = record.source.suffix
-    out_name = f"{record.source.stem}_x{record.x1}_y{record.y1}{extension}"
-    images_out = output_dir / record.split / "images"
-    labels_out = output_dir / record.split / "labels"
-    images_out.mkdir(parents=True, exist_ok=True)
-    labels_out.mkdir(parents=True, exist_ok=True)
-    image_out = images_out / out_name
-    if not cv2.imwrite(str(image_out), record.image):
-        raise OSError(f"Could not write tile image: {image_out}")
-    (labels_out / f"{Path(out_name).stem}.txt").write_text(
-        "\n".join(record.labels) + ("\n" if record.labels else ""), encoding="utf-8"
-    )
-    return {
-        "split": record.split,
-        "source": str(record.source),
-        "tile_x1": record.x1,
-        "tile_y1": record.y1,
-        "tile_x2": record.x2,
-        "tile_y2": record.y2,
-        "out_name": out_name,
-        "n_labels": len(record.labels),
-    }
+    return labelled_count, empty_written, manifest
 
 
 def write_data_yaml(output_dir: Path, source_data: dict, splits: list[str]) -> Path:
@@ -221,15 +286,10 @@ def run(args: argparse.Namespace) -> None:
         except ValueError as exc:
             print(f"[WARNING] Skipping split '{split}': {exc}")
             continue
-        labelled, empty = collect_tiles(split, images_dir, dataset_root, args)
-        selected_empty = select_empty_tiles(len(labelled), list(range(len(empty))), args.empty_frac, args.seed)
-        for record in labelled + [empty[index] for index in selected_empty]:
-            try:
-                manifest.append(write_record(record, output_dir))
-                total += 1
-            except OSError as exc:
-                print(f"[WARNING] Skipping unwritable tile from {record.source.name}: {exc}")
-        print(f"[{split}] {len(labelled)} labelled + {len(selected_empty)} empty tiles written")
+        labelled_count, empty_count, split_manifest = process_split(split, images_dir, dataset_root, args, output_dir)
+        manifest.extend(split_manifest)
+        total += labelled_count + empty_count
+        print(f"[{split}] {labelled_count} labelled + {empty_count} empty tiles written")
 
     if total == 0:
         sys.exit("[ERROR] Zero tiles written; output is unusable.")
