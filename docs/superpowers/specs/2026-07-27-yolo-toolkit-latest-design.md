@@ -6,7 +6,7 @@
 
 ## Goal
 
-Keep this toolkit version-agnostic as **YOLO Toolkit**, always targeting the **latest Ultralytics YOLO** generation. As of this writing that is **YOLO26**. Update docs and code accordingly, recalibrate training VRAM heuristics via a local auto-probe, and harden gitignore so personal/cache/weights never ship in a public commit.
+Keep this toolkit version-agnostic as **YOLO Toolkit**, always targeting the **latest Ultralytics YOLO** generation. As of this writing that is **YOLO26**. Update docs and code accordingly, recalibrate training VRAM heuristics via a local auto-probe, add **default-on image tiling** for small-object train/infer on large images, and harden gitignore so personal/cache/weights never ship in a public commit.
 
 ## Decisions (locked)
 
@@ -19,6 +19,13 @@ Keep this toolkit version-agnostic as **YOLO Toolkit**, always targeting the **l
 | VRAM strategy | FLOPs-scaled built-in fallbacks + local auto-probe cache |
 | Probe UX | Auto on first GPU train if cache missing; `--probe-vram` refreshes |
 | Approach | Rename + fallbacks + probe (approach 2) |
+| Tiling scope | **Train + infer**, default on |
+| Tiling architecture | New `tile_yolo_dataset/` + tiled mode in `detect_images` |
+| Tile policy | Tile size = `imgsz`, overlap **20%**, skip if both sides ≤ imgsz |
+| Border labels (train) | Clip to tile; drop if remaining area &lt; **20%** of original |
+| Empty tiles (train) | Keep a **capped** negative set (~10% of output tiles) |
+| Infer merge | Map to full-image coords + class-wise NMS IoU **0.5** |
+| Opt out | `--no-tiles` on detect; skip/omit tile step only if user chooses |
 
 ## Scope
 
@@ -28,6 +35,8 @@ Keep this toolkit version-agnostic as **YOLO Toolkit**, always targeting the **l
 - Update training defaults and examples to `yolo26m.pt` / `yolo26l.pt` / `yolo26x.pt`
 - FLOPs-scaled built-in `VRAM_PER_IMAGE` fallbacks for YOLO26
 - Auto VRAM probe + local cache for `train_detector`
+- New `tile_yolo_dataset/` script (train-prep tiling) + template bat
+- Default-on tiled inference + NMS merge in `detect_images` (`--no-tiles` to disable)
 - Tighten `.gitignore` for public-repo safety (especially `.cursor/`)
 - Align template `.bat` REM lines and `requirements.txt` commentary / minimum pin
 - Point local `origin` at `https://github.com/NiRo-2/yolov-toolkit.git` if it still references the old `yolov8-toolkit` remote URL
@@ -45,6 +54,9 @@ Keep this toolkit version-agnostic as **YOLO Toolkit**, always targeting the **l
 - Changing auto-defaults to still prefer `yolov8*.pt` (manual `--model yolov8m.pt` may still work if Ultralytics serves it)
 - Ignoring the entire `.claude/` tree (keep existing `settings.local.json` rule only)
 - Structural rewrite of the dataset-size × VRAM decision-table tiers
+- Soft-NMS / weighted box fusion for tile merge
+- Auto-tiling inside `train_detector` (train consumes an already-tiled YOLO dataset)
+- Baking tiling into `voc_to_yolo` / `vlm_yolo_prep` / `flat_yolo_split` / `remap_yolo_labels` (those remain whole-image producers; tiling is a dedicated next step)
 
 ## Naming conventions
 
@@ -58,7 +70,7 @@ Keep this toolkit version-agnostic as **YOLO Toolkit**, always targeting the **l
 | CLI / help / docstrings | “YOLO” generically; “YOLO26” when a concrete generation/model is meant |
 | External export docs | Keep X-AnyLabel-toolkit path/script name as published upstream |
 
-Files expected to change for naming (non-exhaustive): `README.md`, `CLAUDE.md`, `requirements.txt`, all script module docstrings / argparse help / print banners, template `.bat` REM headers, and `train_detector/train_detector.py` model strings + tables.
+Files expected to change for naming (non-exhaustive): `README.md`, `CLAUDE.md`, `requirements.txt`, all script module docstrings / argparse help / print banners, template `.bat` REM headers, and `train_detector/train_detector.py` model strings + tables. New: `tile_yolo_dataset/`.
 
 ## Train auto-config + VRAM probe
 
@@ -132,6 +144,52 @@ Usable VRAM fraction remains **0.85**.
 
 Do **not** rewrite tier thresholds in this pass. Only swap model names and VRAM numbers. Optional later follow-up: if probe cache shows x@1280 comfortably ≥ `MIN_BATCH` on 16GB, reconsider the x gate — out of scope now.
 
+## Tiling (default on)
+
+Recommended pipeline:
+
+```text
+raw / VOC / flat YOLO
+        → dataset builders (whole images)
+        → tile_yolo_dataset/   (default for large images / small objects)
+        → train_detector/
+        → detect_images/      (tiled by default; --no-tiles to opt out)
+```
+
+### Train prep — `tile_yolo_dataset/`
+
+- **Input:** existing YOLO-format dataset (`data.yaml` + train/val/[test] images+labels).
+- **Output:** new YOLO-format dataset of tiles (auto-versioned output dir like other scripts).
+- **Defaults:**
+  - `--imgsz` default **1024** (tile width/height)
+  - overlap **20%** (`--overlap 0.2`)
+  - if both image sides ≤ imgsz: copy through as a single tile (no slice)
+- **Labels:** convert YOLO normalized → pixel; clip to tile; drop if remaining box area &lt; **20%** of original box area; re-normalize to tile size.
+- **Empty tiles:** after labelled tiles are produced, keep empty tiles up to **~10% of total output tiles** (random sample among empties; if fewer empties exist, keep all). Write empty `.txt` label files.
+- **Optional:** `tiles_manifest.json` under output (source path, tile xyxy offsets, split) for debug — lives under user `--output`, not the repo.
+- **Template:** `_Run_tile_yolo_dataset_template.bat` (personal bats remain gitignored).
+- Follow existing script patterns: `normalize_path()`, argparse style, auto-versioned non-empty outputs.
+
+### Infer — `detect_images` tiled by default
+
+- Default: tiled inference enabled.
+- For each source image with width or height &gt; tile size: sliding window with same `imgsz` + 20% overlap → run detector per tile → map boxes to full-image pixel coords → class-wise NMS at IoU **0.5** → draw/export once on the full image.
+- Images already ≤ tile size: single whole-image pass (no slice).
+- **`--no-tiles`:** restore today’s whole-image path.
+- **`--imgsz` / `--overlap`:** align with train-prep defaults when tiling (exact CLI names finalized in plan; must be documented).
+- JSON sidecars and annotated images remain **full-frame** after merge (not per-tile outputs by default).
+- Parallel batch/workers pipeline: tile crops are the inference units when tiling is on; merge happens per source image before save.
+
+### Shared geometry
+
+Prefer a small shared helper (either inside `tile_yolo_dataset/` imported carefully, or a tiny `yolo_tiling.py` used by both train-prep and detect) for:
+- window grid generation (tile size + overlap)
+- box clip + min-area filter
+- box offset map tile → full image
+- class-wise NMS
+
+Avoid a heavy new package; keep it script-local and consistent with the repo’s flat script-folder style.
+
 ## Public-repo hygiene
 
 ### Keep (already correct)
@@ -153,14 +211,16 @@ Do **not** rewrite tier thresholds in this pass. Only swap model names and VRAM 
 ### Commit policy for implementation
 
 Stage only: public docs, source, `.gitignore`, `requirements.txt`, and this `docs/superpowers/` design/plan tree.  
-Never stage: personal bats, weights, runs, exiftool binaries, probe cache, `.cursor`, datasets.
+Never stage: personal bats, weights, runs, exiftool binaries, probe cache, `.cursor`, datasets, tiled dataset outputs.
 
 ## Docs + requirements
 
 ### Docs
 
 - `README.md` / `CLAUDE.md`: title, overview, script table, examples, auto-config tables, install blurb
+- Document tiling in the main pipeline diagram and a dedicated section
 - Training section: document auto-probe, `--probe-vram`, cache path
+- Detect section: tiled-by-default + `--no-tiles`
 - Template `.bat` REM lines: YOLOv8 → YOLO / YOLO26 as appropriate
 - External X-AnyLabel pointer unchanged in path/script name
 - Replace leftover `yolov8-toolkit` example paths with `yolov-toolkit` (GitHub name already updated)
@@ -175,11 +235,14 @@ ultralytics>=8.4.0
 
 Floor is **8.4.0** (Ultralytics YOLO26 Models Release). No upper pin — toolkit should float to latest via `pip install -U ultralytics`.
 
+No new hard dependency required for tiling if implemented with Pillow/OpenCV + numpy already available via ultralytics/opencv-python. Prefer `opencv-python` already listed.
+
 ### Verification (light)
 
-- No new test suite required
-- Check `--help` / argparse for new flag
+- No new full test suite required
+- Check `--help` / argparse for `--probe-vram`, `--no-tiles`, tile script flags
 - Code review of selection + probe load/merge/fallback paths
+- Manual/logic check: clip+drop, empty-tile cap, NMS merge on a synthetic 2-tile overlap case
 - Confirm `git check-ignore` covers `.cursor/`, `*_personal.bat`, `train_detector/weights/`, runs, exiftool
 
 ## Error handling summary
@@ -191,9 +254,15 @@ Floor is **8.4.0** (Ultralytics YOLO26 Models Release). No upper pin — toolkit
 | Probe exception | Warn + built-ins; continue train |
 | Corrupt JSON cache | Treat as missing; rebuild entries as needed |
 | User passes `--model yolov8x.pt` | Allowed; probe/cache keyed by that filename if GPU path needs it |
+| Image ≤ imgsz in tile prep | Copy through as one tile |
+| Image ≤ imgsz in detect | Whole-image infer (no slice) |
+| Tile with no labels after clip | Candidate for empty-tile pool |
+| Corrupt/missing label file in tile prep | Skip pair with warning (match other dataset scripts’ harden style) |
 
 ## Non-goals / explicit non-changes
 
-- Dataset on-disk layout and `data.yaml` schema
-- detect_images parallel pipeline behavior (aside from YOLOv8 → YOLO wording)
-- VLM / VOC / flat-split / remap logic beyond naming in docs/strings
+- Soft-NMS / WBF for tile merge (use class-wise NMS only)
+- Auto-tiling inside `train_detector`
+- Changing on-disk YOLO layout / `data.yaml` schema (tiled output still standard YOLO format)
+- Baking tiling into VOC/VLM/flat-split/remap producers
+- detect_images I/O parallelism redesign beyond fitting tiles into the existing batch/worker model
