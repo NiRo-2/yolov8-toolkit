@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-27  
 **Status:** Approved design (pending implementation plan)  
-**Repo:** public `yolov-toolkit`
+**Repo:** public [`NiRo-2/yolov-toolkit`](https://github.com/NiRo-2/yolov-toolkit) (GitHub rename already done; was `yolov8-toolkit`)
 
 ## Goal
 
@@ -30,10 +30,16 @@ Keep this toolkit version-agnostic as **YOLO Toolkit**, always targeting the **l
 - Auto VRAM probe + local cache for `train_detector`
 - Tighten `.gitignore` for public-repo safety (especially `.cursor/`)
 - Align template `.bat` REM lines and `requirements.txt` commentary / minimum pin
+- Point local `origin` at `https://github.com/NiRo-2/yolov-toolkit.git` if it still references the old `yolov8-toolkit` remote URL
+- Fix leftover example paths that say `yolov8-toolkit` → `yolov-toolkit`
+
+### Already done (not re-done here)
+
+- GitHub repository rename to [`NiRo-2/yolov-toolkit`](https://github.com/NiRo-2/yolov-toolkit) (manual)
 
 ### Out of scope
 
-- Renaming the GitHub repo or local folder `yolov-toolkit`
+- Renaming the local disk checkout folder (already matches `yolov-toolkit` on this machine; optional elsewhere)
 - Changing the external [X-AnyLabel-toolkit](https://github.com/NiRo-2/X-AnyLabel-toolkit) export script (keep existing pointer; script path/name unchanged)
 - Running GPU VRAM measurement in the implementation session (probe does that at runtime)
 - Changing auto-defaults to still prefer `yolov8*.pt` (manual `--model yolov8m.pt` may still work if Ultralytics serves it)
@@ -156,7 +162,8 @@ Never stage: personal bats, weights, runs, exiftool binaries, probe cache, `.cur
 - `README.md` / `CLAUDE.md`: title, overview, script table, examples, auto-config tables, install blurb
 - Training section: document auto-probe, `--probe-vram`, cache path
 - Template `.bat` REM lines: YOLOv8 → YOLO / YOLO26 as appropriate
-- External X-AnyLabel pointer unchanged in path/script name; fix any leftover “yolov8-toolkit” path wording in examples to the current repo name if present
+- External X-AnyLabel pointer unchanged in path/script name
+- Replace leftover `yolov8-toolkit` example paths with `yolov-toolkit` (GitHub name already updated)
 
 ### requirements.txt
 
