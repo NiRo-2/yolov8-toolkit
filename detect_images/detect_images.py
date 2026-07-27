@@ -281,20 +281,26 @@ def results_to_dets(result, x_offset: float = 0.0, y_offset: float = 0.0) -> lis
     return dets
 
 
-def detect_image_tiled(model, image_bgr, conf, tile, overlap, iou) -> list:
+def detect_image_tiled(model, image_bgr, conf, tile, overlap, iou, batch_size=1) -> list:
     """Run tiled detection over one image; returns a flat list of det dicts.
 
-    Crops all tile windows for this image and runs them as a single batched
-    model call (tiles from different source images are never batched
-    together). When the image fits within one tile, `iter_tile_windows`
-    returns a single whole-image window, so this is equivalent to
-    whole-image inference. Detections from multiple tiles are merged with
-    class-wise NMS.
+    Crops all tile windows for this image and runs them through the model in
+    chunks of at most `batch_size` tiles per call (tiles from different
+    source images are never batched together). `imgsz=tile` is passed
+    explicitly so Ultralytics runs inference at the tile's native size
+    instead of silently resizing crops to its default 640. When the image
+    fits within one tile, `iter_tile_windows` returns a single whole-image
+    window, so this is equivalent to whole-image inference. Detections from
+    multiple tiles are merged with class-wise NMS.
     """
     h, w = image_bgr.shape[:2]
     windows = iter_tile_windows(w, h, tile, overlap)
     crops = [image_bgr[ty1:ty2, tx1:tx2] for (tx1, ty1, tx2, ty2) in windows]
-    tile_results = list(model(crops, conf=conf, verbose=False))
+
+    tile_results = []
+    for chunk_start in range(0, len(crops), max(1, batch_size)):
+        chunk = crops[chunk_start:chunk_start + max(1, batch_size)]
+        tile_results.extend(model(chunk, conf=conf, imgsz=tile, verbose=False))
 
     all_dets = []
     for (tx1, ty1, tx2, ty2), result in zip(windows, tile_results):
@@ -485,6 +491,14 @@ def run(args):
     if not (0.0 <= args.conf <= 1.0):
         print(f"[ERROR] Confidence must be between 0.0 and 1.0, got: {args.conf}")
         sys.exit(1)
+
+    if args.tiles:
+        if not (0.0 <= args.tile_overlap < 1.0):
+            print(f"[ERROR] --tile-overlap must be in [0.0, 1.0), got: {args.tile_overlap}")
+            sys.exit(1)
+        if args.tile_imgsz <= 0:
+            print(f"[ERROR] --tile-imgsz must be > 0, got: {args.tile_imgsz}")
+            sys.exit(1)
 
     # Collect images.
     iterator = images_dir.rglob("*") if args.recursive else images_dir.iterdir()
@@ -727,12 +741,14 @@ def run(args):
 
             if args.tiles:
                 # Per-source-image tiled detect: each image's own tiles are
-                # batched together inside detect_image_tiled, but tiles from
-                # different source images are never batched with each other.
+                # run in chunks of `batch_size` inside detect_image_tiled,
+                # but tiles from different source images are never batched
+                # with each other.
                 for idx, p, im, flat_name, display_name in valid:
                     dets = detect_image_tiled(
                         model, im, args.conf,
                         args.tile_imgsz, args.tile_overlap, args.tile_iou,
+                        batch_size,
                     )
                     pool.submit(post_process, idx, p, im, dets, flat_name, display_name)
             else:
