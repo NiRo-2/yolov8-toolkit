@@ -19,6 +19,18 @@ Usage:
                   integer or 'auto' (default: auto = min(8, os.cpu_count()))
     --batch       GPU inference batch size; integer or 'auto'
                   (default: auto = 8 if CUDA is available, else 1)
+    --tiles       tile large images before detect, merging results with NMS
+                  (default: True)
+    --no-tiles    disable tiling; run whole-image inference (legacy behavior)
+    --tile-imgsz  tile size in pixels when --tiles is on (default: 1024)
+    --tile-overlap tile overlap fraction (default: 0.2)
+    --tile-iou    NMS IoU threshold for merging tiled detections (default: 0.5)
+
+By default, images are tiled before inference (tiling is skipped automatically
+when an image already fits within one tile). Each source image's tiles are
+batched together in a single model call; tiles from different source images
+are never batched together. Detections from all tiles of one image are merged
+with class-wise NMS. Pass --no-tiles to restore whole-image inference.
 
 When recursive scanning finds images in subfolders, outputs are still written
 flat under detect_images/detections/<input_folder_name>/. Files in subfolders are renamed by
@@ -69,6 +81,11 @@ from ortho_tag_sidecar import (
     merge_pillow_gps_exif_into_metadata,
     verify_sidecar_json_file,
 )
+
+_TILE_DIR = _REPO_ROOT / "tile_yolo_dataset"
+if str(_TILE_DIR) not in sys.path:
+    sys.path.insert(0, str(_TILE_DIR))
+from tile_geometry import iter_tile_windows, nms_xyxy  # type: ignore
 
 
 # -- Config --------------------------------------------------------------------
@@ -191,6 +208,27 @@ def parse_args():
         help="GPU inference batch size. Integer or 'auto' "
              "(default: auto = 8 if CUDA is available, else 1)."
     )
+    parser.add_argument(
+        "--tiles", dest="tiles", action="store_true",
+        help="Tile large images before detect (default: True)"
+    )
+    parser.add_argument(
+        "--no-tiles", dest="tiles", action="store_false",
+        help="Disable tiling; whole-image inference"
+    )
+    parser.set_defaults(tiles=True)
+    parser.add_argument(
+        "--tile-imgsz", type=int, default=1024,
+        help="Tile size in pixels when --tiles is on (default: 1024)"
+    )
+    parser.add_argument(
+        "--tile-overlap", type=float, default=0.2,
+        help="Tile overlap fraction (default: 0.2)"
+    )
+    parser.add_argument(
+        "--tile-iou", type=float, default=0.5,
+        help="NMS IoU for merging tiled detections (default: 0.5)"
+    )
 
     return parser.parse_args()
 
@@ -222,14 +260,62 @@ def resolve_batch(value) -> Tuple[int, str]:
 
 # -- Drawing -------------------------------------------------------------------
 
-def export_json(img_array, results, class_names):
-    """Export detections as JSON with pixel + YOLO normalized coordinates."""
+def results_to_dets(result, x_offset: float = 0.0, y_offset: float = 0.0) -> list:
+    """Adapt one ultralytics Results object's boxes into a flat det-dict list.
+
+    Each det dict: {"cls": int, "conf": float, "x1": float, "y1": float,
+    "x2": float, "y2": float}. Coordinates are offset into source-image space
+    (used when the Results came from a tile crop rather than the full image).
+    """
+    dets = []
+    for box in result.boxes:
+        x1, y1, x2, y2 = map(float, box.xyxy[0])
+        dets.append({
+            "cls": int(box.cls[0]),
+            "conf": float(box.conf[0]),
+            "x1": x1 + x_offset,
+            "y1": y1 + y_offset,
+            "x2": x2 + x_offset,
+            "y2": y2 + y_offset,
+        })
+    return dets
+
+
+def detect_image_tiled(model, image_bgr, conf, tile, overlap, iou) -> list:
+    """Run tiled detection over one image; returns a flat list of det dicts.
+
+    Crops all tile windows for this image and runs them as a single batched
+    model call (tiles from different source images are never batched
+    together). When the image fits within one tile, `iter_tile_windows`
+    returns a single whole-image window, so this is equivalent to
+    whole-image inference. Detections from multiple tiles are merged with
+    class-wise NMS.
+    """
+    h, w = image_bgr.shape[:2]
+    windows = iter_tile_windows(w, h, tile, overlap)
+    crops = [image_bgr[ty1:ty2, tx1:tx2] for (tx1, ty1, tx2, ty2) in windows]
+    tile_results = list(model(crops, conf=conf, verbose=False))
+
+    all_dets = []
+    for (tx1, ty1, tx2, ty2), result in zip(windows, tile_results):
+        all_dets.extend(results_to_dets(result, x_offset=tx1, y_offset=ty1))
+
+    if len(windows) == 1:
+        return all_dets
+    return nms_xyxy(all_dets, iou_thresh=iou)
+
+
+def export_json(img_array, dets, class_names):
+    """Export detections as JSON with pixel + YOLO normalized coordinates.
+
+    dets: list of {"cls": int, "conf": float, "x1"/"y1"/"x2"/"y2": float}.
+    """
     h, w = img_array.shape[:2]
     items = []
-    for box in results[0].boxes:
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
-        conf = float(box.conf[0])
-        cls_id = int(box.cls[0])
+    for det in dets:
+        x1, y1, x2, y2 = int(det["x1"]), int(det["y1"]), int(det["x2"]), int(det["y2"])
+        conf = det["conf"]
+        cls_id = det["cls"]
         cls_name = class_names[cls_id]
 
         # YOLO normalized format (cx, cy, bw, bh) / (W, H)
@@ -278,12 +364,15 @@ def extract_image_metadata(img_path: Path, exiftool_cmd) -> Tuple[Dict, str]:
         return {}, "none"
 
 
-def draw_detections(image, results, class_names):
-    """Draw bounding boxes and confidence labels on image."""
-    for box in results[0].boxes:
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
-        conf            = float(box.conf[0])
-        cls_id          = int(box.cls[0])
+def draw_detections(image, dets, class_names):
+    """Draw bounding boxes and confidence labels on image.
+
+    dets: list of {"cls": int, "conf": float, "x1"/"y1"/"x2"/"y2": float}.
+    """
+    for det in dets:
+        x1, y1, x2, y2 = int(det["x1"]), int(det["y1"]), int(det["x2"]), int(det["y2"])
+        conf            = det["conf"]
+        cls_id          = det["cls"]
         cls_name        = class_names[cls_id]
 
         # Draw bounding box
@@ -445,6 +534,10 @@ def run(args):
     print(f"  save images: {args.export_annotated_images}")
     print(f"  workers    : {workers}  ({workers_src})")
     print(f"  batch      : {batch_size}  ({batch_src})")
+    if args.tiles:
+        print(f"  tiles      : True  (imgsz={args.tile_imgsz}, overlap={args.tile_overlap}, iou={args.tile_iou})")
+    else:
+        print(f"  tiles      : False  (whole-image inference)")
     print()
 
     # Load model
@@ -551,16 +644,16 @@ def run(args):
             if should_warn:
                 safe_print("  [WARN] exiftool not found; JPEG metadata copy is limited to Pillow-supported fields.")
 
-    def post_process(idx, img_path, image, results, flat_name, display_name):
+    def post_process(idx, img_path, image, dets, flat_name, display_name):
         """Per-image post-inference work (JSON, ExifTool, image save). Runs in worker thread."""
-        n_det = len(results[0].boxes)
+        n_det = len(dets)
         with state_lock:
             state["total_detections"] += n_det
 
-        annotated = draw_detections(image.copy(), results, class_names)
+        annotated = draw_detections(image.copy(), dets, class_names)
 
         if args.export_json and n_det > 0:
-            items = export_json(image, results, class_names)
+            items = export_json(image, dets, class_names)
             metadata, meta_src = extract_image_metadata(img_path, exiftool_cmd)
             metadata = merge_pillow_gps_exif_into_metadata(metadata, img_path)
             if meta_src != "exiftool":
@@ -632,11 +725,23 @@ def run(args):
             if not valid:
                 continue
 
-            images_for_model = [v[2] for v in valid]
-            results_list = list(model(images_for_model, conf=args.conf, verbose=False))
+            if args.tiles:
+                # Per-source-image tiled detect: each image's own tiles are
+                # batched together inside detect_image_tiled, but tiles from
+                # different source images are never batched with each other.
+                for idx, p, im, flat_name, display_name in valid:
+                    dets = detect_image_tiled(
+                        model, im, args.conf,
+                        args.tile_imgsz, args.tile_overlap, args.tile_iou,
+                    )
+                    pool.submit(post_process, idx, p, im, dets, flat_name, display_name)
+            else:
+                images_for_model = [v[2] for v in valid]
+                results_list = list(model(images_for_model, conf=args.conf, verbose=False))
 
-            for (idx, p, im, flat_name, display_name), r in zip(valid, results_list):
-                pool.submit(post_process, idx, p, im, [r], flat_name, display_name)
+                for (idx, p, im, flat_name, display_name), r in zip(valid, results_list):
+                    dets = results_to_dets(r)
+                    pool.submit(post_process, idx, p, im, dets, flat_name, display_name)
     # ThreadPoolExecutor.__exit__ waits for all submitted tasks to complete.
 
     # Export labels.txt (class_id → class_name mapping)
