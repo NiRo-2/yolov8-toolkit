@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-A YOLOv8 toolkit for building datasets, training detectors, and running inference. The pipeline flows: raw photos or VOC annotations → labelled YOLOv8 dataset → training → inference.
+A YOLO Toolkit for building datasets, training detectors, and running inference with the latest Ultralytics YOLO (currently YOLO26). The pipeline flows: raw/VOC/flat inputs → dataset builders → `tile_yolo_dataset` (recommended) → training → tiled-by-default inference.
 
 PT → ONNX + X-AnyLabeling export lives in the separate [X-AnyLabel-toolkit](https://github.com/NiRo-2/X-AnyLabel-toolkit) repo (`scripts/yolov8_pt_to_xanylabeling_onnx/`).
 
@@ -12,12 +12,13 @@ PT → ONNX + X-AnyLabeling export lives in the separate [X-AnyLabel-toolkit](ht
 
 | Script | Purpose |
 |---|---|
-| `vlm_yolo_prep/vlm_yolo_prep.py` | Auto-label raw photos using a local VLM (LM Studio) → YOLOv8 dataset |
-| `voc_to_yolo/voc_to_yolo.py` | Convert existing Pascal VOC XML annotations to YOLOv8 format |
+| `vlm_yolo_prep/vlm_yolo_prep.py` | Auto-label raw photos using a local VLM (LM Studio) → YOLO dataset |
+| `voc_to_yolo/voc_to_yolo.py` | Convert existing Pascal VOC XML annotations to YOLO format |
 | `flat_yolo_split/flat_yolo_split.py` | Split flat folder of YOLO images + labels into train/val (+ optional test) and write `data.yaml` |
 | `remap_yolo_labels/remap_yolo_labels.py` | Remap classes and merge one or more YOLO datasets into a new output dataset |
-| `train_detector/train_detector.py` | Train YOLOv8 detector with auto-configured hardware-aware hyperparameters |
-| `detect_images/detect_images.py` | Run trained model on image folder, draw boxes, export JSON detections |
+| `tile_yolo_dataset/tile_yolo_dataset.py` | Tile a YOLO dataset into overlapping windows for small-object training |
+| `train_detector/train_detector.py` | Train YOLO26 detector with auto-configured hardware-aware hyperparameters |
+| `detect_images/detect_images.py` | Run a trained model on an image folder with tiled inference on by default; draw boxes and export JSON detections |
 | `ortho_tag_sidecar/ortho_tag_sidecar.py` | Pillow GPS → ExifTool `-G1`-style metadata helpers; CLI verifies one sidecar JSON for B3DM |
 | `exiftool/_Run_exiftool.bat` | Windows helper to dump full image metadata to `./exiftool/outputs/` |
 | `flat_yolo_split/_Run_flat_yolo_split_template.bat` | Template batch helper for flat YOLO folder → train/val split |
@@ -27,8 +28,10 @@ PT → ONNX + X-AnyLabeling export lives in the separate [X-AnyLabel-toolkit](ht
 
 **Install dependencies:**
 ```bash
-pip install ultralytics opencv-python psutil requests pillow pyyaml
+pip install -r requirements.txt
 ```
+
+`requirements.txt` requires `ultralytics>=8.4.0` for YOLO26 support. Update it with `pip install -U ultralytics`.
 
 **Dataset from raw photos:**
 ```bash
@@ -55,16 +58,31 @@ python remap_yolo_labels/remap_yolo_labels.py --input C:/data/d1 --input C:/data
 
 `--map INDEX:OLD:NEW` indices follow input order (first `--input` is index 0).
 
+**Tile a dataset for small-object training (recommended):**
+```bash
+python tile_yolo_dataset/tile_yolo_dataset.py --input C:/data/dataset --output C:/data/dataset_tiled
+```
+
+Default tiling uses `--imgsz 1024`, `--overlap 0.2`, and `--empty-frac 0.10`. Use the generated `data.yaml` for training; `--manifest` writes `tiles_manifest.json`.
+
 **Train:**
 ```bash
 python train_detector/train_detector.py --input /path/to/data.yaml --name my_detector
 python train_detector/train_detector.py --resume --name my_detector   # resume crashed run
 ```
 
+**Probe VRAM estimates without training:**
+```bash
+python train_detector/train_detector.py --probe-vram
+python train_detector/train_detector.py --probe-vram --model yolo26l.pt
+```
+
 **Detect:**
 ```bash
 python detect_images/detect_images.py --images /path/to/images --model train_detector/runs/detect/my_detector/weights/best.pt --export-json
 ```
+
+Detection tiles images by default (`--tile-imgsz 1024`, `--tile-overlap 0.2`, `--tile-iou 0.5`) and merges tile detections with class-wise NMS. Use `--no-tiles` for legacy whole-image inference.
 
 **X-AnyLabeling (PT → ONNX + config)** — run from [X-AnyLabel-toolkit](https://github.com/NiRo-2/X-AnyLabel-toolkit):
 ```bash
@@ -85,11 +103,13 @@ python scripts/yolov8_pt_to_xanylabeling_onnx/yolov8_pt_to_xanylabeling_onnx.py 
 
 All scripts share common patterns:
 - `normalize_path()` — handles Windows/Unix path conversion
-- YOLOv8 dataset format: `train/val/[test]/images/` + `labels/` + `data.yaml`
+- YOLO dataset format: `train/val/[test]/images/` + `labels/` + `data.yaml`
 - `data.yaml` structure: `train`, `val`, `test` (optional), `nc`, `names`
 - Class IDs assigned in order (first listed = 0, second = 1, etc.)
 
 **`train_detector/train_detector.py`** — auto-detects GPU VRAM, CPU cores, RAM, dataset size, and native image resolution. Selects optimal model (m/l/x), imgsz, batch size, and workers. Decision logic in `select_model_and_imgsz()` and `calc_batch()` with VRAM_PER_IMAGE estimates.
+
+**`tile_yolo_dataset/tile_yolo_dataset.py`** — splits YOLO train/val[/test] images into overlapping square windows, clips and re-normalizes labels (dropping a clipped box if less than 20% of its original area survives), caps empty tiles at no more than 10% of each split's *total output tile count* (not 10% of the labelled-tile count — that works out to ~11% of labelled tiles), and writes a new YOLO dataset plus optional tile-provenance manifest. Streams per source image (writes labelled tiles immediately, re-reads a source image only for its selected empty tiles) so peak memory is one decoded image, not the whole split.
 
 **`vlm_yolo_prep/vlm_yolo_prep.py`** — sends images to LM Studio's OpenAI-compatible API, parses JSON bbox responses, salvages partial JSON from truncated outputs, converts to YOLO format, splits dataset, writes data.yaml. Uses Qwen2.5-VL models.
 
@@ -102,11 +122,12 @@ All scripts share common patterns:
 ## Key Details
 
 - `vlm_yolo_prep.py`: MAX_INFERENCE_SIZE (line ~431) controls VLM input resolution — match to LM Studio context setting (4000 for 32k, 2048 for 16k, 1280 for 8k)
-- `train_detector/train_detector.py`: writes to `train_detector/runs/detect/<name>/`; caches pretrained backbones in `train_detector/weights/` via `resolve_pretrained_weights()`; default `--patience` 100; fresh-run augmentation: `degrees=180`, `flipud=0.5`, `copy_paste=0.3`, `mixup=0.15`, `multi_scale=0.5` (when VRAM supports batch >= 4 under peak multi-scale sizing), `close_mosaic=60`, `cos_lr=True`, `nbs=64` (not applied on `--resume`); imgsz only raised if batch stays >= 4 (nbs=64 keeps effective batch at 64); prints `effective batch` in `[Auto Config]` when batch < 64; capped to native image resolution (no upscaling); uses `statistics.median()` for native resolution detection
+- `train_detector/train_detector.py`: writes to `train_detector/runs/detect/<name>/`; caches pretrained backbones and CUDA VRAM probe results at `train_detector/weights/vram_estimates.json` via `resolve_pretrained_weights()` / `ensure_vram_estimates()`; `--probe-vram` refreshes measurements and exits without `--input`; falls back to FLOPs-scaled estimates when CUDA or probing is unavailable; default `--patience` 100; fresh-run augmentation: `degrees=180`, `flipud=0.5`, `copy_paste=0.3`, `mixup=0.15`, `multi_scale=0.5` (when VRAM supports batch >= 4 under peak multi-scale sizing), `close_mosaic=60`, `cos_lr=True`, `nbs=64` (not applied on `--resume`); imgsz only raised if batch stays >= 4 (nbs=64 keeps effective batch at 64); prints `effective batch` in `[Auto Config]` when batch < 64; capped to native image resolution (no upscaling); uses `statistics.median()` for native resolution detection
 - `detect_images/detect_images.py`: JSON export includes both pixel coords (x1,y1,x2,y2) and YOLO normalized (cx,cy,bw,bh); labels.txt maps class_id to class_name
 - `detect_images/detect_images.py`: annotated-image save path uses Pillow metadata transfer plus ExifTool (`--exiftool`, PATH, or repo-local `./exiftool/`) for full metadata groups; save-time fallback can be enabled with `--allow-missing-exiftool`
 - `detect_images/detect_images.py`: subdirectory scanning is on by default (`--recursive`, disable with `--no-recursive`); outputs stay flat under `detect_images/detections/<input_folder_name>/` with relative-subpath underscore prefixing on collisions (`sub/a/foo.jpg` → `sub_a_foo.jpg`)
 - `detect_images/detect_images.py`: parallel pipeline by default — `--batch` (default `auto = 8 if CUDA else 1`) batches GPU inference, and `--workers` (default `auto = min(8, os.cpu_count())`) runs post-inference I/O (JSON sidecar, ExifTool metadata extract / copy, Pillow image save) on a `ThreadPoolExecutor` while the main thread reads the next batch. Pass `--workers 1 --batch 1` to revert to fully sequential per-image processing. Inference itself stays single-threaded on one GPU; the speed-up comes from overlapping ExifTool subprocesses with the next batch's inference. Worker prints are serialized via a `threading.Lock` but may appear slightly out of order.
+- `detect_images/detect_images.py`: tiled inference is default on (`--tiles`); use `--no-tiles` for whole-image inference. It uses `--tile-imgsz 1024`, `--tile-overlap 0.2`, batches each source image's tiles in chunks of `--batch` (default `8` on CUDA, `1` on CPU) at `imgsz=tile` — tiles from different source images are never batched together — then merges detections with class-wise NMS (`--tile-iou 0.5`).
 - `ortho_tag_sidecar/ortho_tag_sidecar.py`: `merge_pillow_gps_exif_into_metadata()` fills `GPS:*` / basic `ExifIFD:*` when JSON lacks ExifTool-style keys; `--verify-b3dm` in `detect_images.py` uses the same checks as `python ortho_tag_sidecar/ortho_tag_sidecar.py <sidecar.json>`
 - `remap_yolo_labels.py`: all input datasets are read-only; only `--output` is written. Final class IDs are aligned by final class names across all merged inputs.
 - `flat_yolo_split.py`: requires `classes.txt` or `labels.txt` in `--input`; rejects both present; hard-fails on anonymous class names and invalid bbox lines before writing output
